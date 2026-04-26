@@ -14,9 +14,9 @@
     "build": "pnpm build:program && pnpm -r --workspace-concurrency=1 build",
     "test:program": "anchor test --skip-deploy",
     "test:agent": "pnpm --filter @shadow-fuzzer/agent test",
-    "shadow-fuzz": "node packages/cli/bin/shadow-fuzz.js",
-    "fuzz": "node packages/cli/bin/shadow-fuzz.js",
-    "demo": "node packages/cli/bin/shadow-fuzz.js demo",
+    "shadow-fuzz": "pnpm build:agent && pnpm build:cli && node packages/cli/bin/shadow-fuzz.js",
+    "fuzz": "pnpm build:agent && pnpm build:cli && node packages/cli/bin/shadow-fuzz.js",
+    "demo": "pnpm build:agent && pnpm build:cli && node packages/cli/bin/shadow-fuzz.js demo",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"
   },
