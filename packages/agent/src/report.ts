@@ -27,11 +27,14 @@ export async function writeReport(dir: string, report: FuzzReport): Promise<{ js
 
 function renderMarkdown(r: FuzzReport): string {
   const dur = ((r.endedAtMs - r.startedAtMs) / 1000).toFixed(1);
+  const sandboxLine = r.validator
+    ? `- **sandbox:** ${r.config.sandbox} (validator \`${r.validator}\`)`
+    : `- **sandbox:** ${r.config.sandbox}`;
   const head = [
     `# Shadow Fuzzer report`,
     ``,
     `- **target:** \`${r.config.programId.toBase58()}\``,
-    `- **sandbox:** ${r.config.sandbox}`,
+    sandboxLine,
     `- **snapshot slot:** ${r.snapshotSlot}`,
     `- **txs attempted / landed:** ${r.txsAttempted} / ${r.txsLanded}`,
     `- **wall time:** ${dur}s`,

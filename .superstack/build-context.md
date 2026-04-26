@@ -41,8 +41,10 @@ Phase handoff for `/build-with-claude` and downstream skills.
   "deps_installed": true,
   "program_built": true,
   "exploit_suite_passing": true,
+  "magicblock_provisioning_wired": true,
+  "magicblock_account_delegation_ix": true,
+  "magicblock_access_control_ix": false,
   "agent_brain_wired": false,
-  "magicblock_provisioning_wired": false,
   "demo_recorded": false,
   "stretch_dashboard": false,
   "stretch_reputation_nft": false
@@ -53,8 +55,10 @@ Phase handoff for `/build-with-claude` and downstream skills.
 1. ✅ ~~Install deps~~ — done (anchor + spl + magicblock + sendai resolved at root + workspace).
 2. ✅ ~~Build the program~~ — done on Anchor 0.31.1; IDL at `target/idl/vulnerable_vault.json`, .so at `target/deploy/vulnerable_vault.so`.
 3. ✅ ~~Run the local exploit suite~~ — `anchor test` passes; BUG #2 demonstrated end-to-end.
-4. **Wire MagicBlock provisioning** — replace the stub in `packages/agent/src/sandbox.ts::MagicBlockProvider.provision` with the real `@magicblock-labs/ephemeral-rollups-sdk@0.2.11` call. Acceptance: a fuzz run reports `sandbox: magicblock` in the report header without falling back.
-5. **Wire the SendAI brain** — replace `trySingleAttack` in `packages/agent/src/attacker.ts` with an Agent-Kit driver that picks instructions from the IDL and crafts adversarial argument values. Acceptance: a fresh fuzz run on the vault rediscovers BUG #2 without reading the test file.
+4. ✅ ~~Wire MagicBlock provisioning (connection layer)~~ — `MagicBlockProvider.provision` now opens a Magic Router connection, calls `getClosestValidator()`, and (when `MAGICBLOCK_AUTH_KEYPAIR` is set) acquires a Private-ER auth token via `getAuthToken()`. Validator pubkey is surfaced in the report header. 5 unit tests in `packages/agent/src/sandbox.test.ts` cover env-required, success, unreachable-router, fallback-to-surfpool, and explicit-surfpool paths.
+4b. ✅ ~~Add on-chain `delegate_vault` + `undelegate_for_fuzz` ix (public-ER flow)~~ — program now compiles against `ephemeral-rollups-sdk = "0.11.1" features = ["anchor"]` on top of `anchor-lang 0.31.1`. The `#[ephemeral]` macro is on the program module; new ix `delegate_vault` (uses `#[delegate]` + `delegate_pda` CPI, optional `validator: Option<AccountInfo>` to pin) and `undelegate_for_fuzz` (uses `#[commit]` + `MagicIntentBundleBuilder::commit_and_undelegate(...).build_and_invoke()` — `FoldableIntentBuilder` trait must be in scope). IDL emits 7 ix incl. auto-injected `process_undelegation`. BUG #2 exploit suite still passes against the rebuilt program; agent + CLI typecheck.
+4c. **Add Private-ER access-control ix** *(prize-tier finishing piece)* — replicate `magicblock-engine-examples/anchor-counter/programs/private-counter`'s pattern: switch the SDK feature set to `["anchor", "access-control"]`, add a `Permission` PDA + Permission Program CPIs (`CreatePermissionCpiBuilder`, `DelegatePermissionCpiBuilder`, `UpdatePermissionCpiBuilder`), and a `CommitAndUndelegatePermissionCpiBuilder` flow in the undelegate ix. Required for the "private" prize tier; gated behind step 5 (we want to see end-to-end fuzz lifecycle on a public ER first to keep the surface narrow).
+5. **Wire the SendAI brain** — replace `trySingleAttack` in `packages/agent/src/attacker.ts` with an Agent-Kit driver that picks instructions from the IDL and crafts adversarial argument values. The agent's lifecycle is now: snapshot → `MagicBlockProvider.provision` → call `delegate_vault` (passing the chosen validator pubkey) → fuzz loop with `sendMagicTransaction` → call `undelegate_for_fuzz` → write report. Acceptance: a fresh fuzz run on the vault rediscovers BUG #2 without reading the test file.
 6. **Record the demo** — `bash scripts/run-demo.sh`, capture terminal + the generated `reports/report-*.md`.
 7. **Stretch:** flesh out `app/` (Next.js dashboard surfacing the latest report) AND Metaplex + SNS "Bugs Squashed" reputation NFT. Both gated behind a green run of step 6.
 

@@ -20,16 +20,18 @@
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
-    "@magicblock-labs/ephemeral-rollups-sdk": "^0.2.6",
+    "@magicblock-labs/ephemeral-rollups-sdk": "^0.2.11",
     "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.98.0",
     "helius-sdk": "^1.4.4",
     "pino": "^9.5.0",
     "solana-agent-kit": "^1.4.9",
+    "tweetnacl": "^1.0.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "pino-pretty": "^11.3.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

@@ -56,6 +56,7 @@ export async function runFuzz(input: RunFuzzInput): Promise<FuzzReport> {
         parallelism: config.parallelism,
         reportDir: config.reportDir,
       },
+      ...(sandbox.validator ? { validator: sandbox.validator.toBase58() } : {}),
       snapshotSlot: snapshot.slot,
       startedAtMs,
       endedAtMs: Date.now(),

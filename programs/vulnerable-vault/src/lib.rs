@@ -20,6 +20,7 @@
 #![allow(clippy::result_large_err)]
 
 use anchor_lang::prelude::*;
+use ephemeral_rollups_sdk::anchor::ephemeral;
 
 declare_id!("CbdZT6zkBvgfaWCPUooeTkCZDuRz8Rfwmnhw2Nu6ZooC");
 
@@ -29,6 +30,12 @@ pub mod state;
 
 use instructions::*;
 
+// `#[ephemeral]` opts the program into the MagicBlock ephemeral-rollups
+// runtime. It teaches anchor how to handle accounts whose owner has been
+// reassigned to the delegation program (the state during a fuzz session)
+// and unlocks the `#[delegate]` / `#[commit]` macros used by the
+// delegate_vault and undelegate_for_fuzz instructions.
+#[ephemeral]
 #[program]
 pub mod vulnerable_vault {
     use super::*;
@@ -47,5 +54,17 @@ pub mod vulnerable_vault {
 
     pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
         instructions::withdraw::handler(ctx, amount)
+    }
+
+    /// Delegate the vault PDA into a MagicBlock ER. The agent calls this
+    /// before the fuzz loop starts.
+    pub fn delegate_vault(ctx: Context<DelegateVault>) -> Result<()> {
+        instructions::delegate_vault::handler(ctx)
+    }
+
+    /// Commit ER-side state back to the base layer and release the
+    /// delegation. The agent calls this when the fuzz session ends.
+    pub fn undelegate_for_fuzz(ctx: Context<UndelegateForFuzz>) -> Result<()> {
+        instructions::undelegate_for_fuzz::handler(ctx)
     }
 }

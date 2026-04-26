@@ -1,15 +1,21 @@
+import { readFile } from "node:fs/promises";
+
+import { getClosestValidator } from "@magicblock-labs/ephemeral-rollups-sdk";
+import { getAuthToken } from "@magicblock-labs/ephemeral-rollups-sdk/privacy";
+import { Connection, Keypair } from "@solana/web3.js";
+import nacl from "tweetnacl";
+
 import { logger } from "./logger.js";
 import type { Sandbox, SandboxKind, Snapshot } from "./types.js";
 
 // ─── Sandbox provider abstraction ─────────────────────────────────────────
 // The agent never talks to mainnet — it talks to a Sandbox. MagicBlock
 // Private ERs are the primary path; Surfpool is the local fallback used
-// when MagicBlock provisioning is unavailable. Both are spun up per fuzz
-// run and torn down at the end so nothing leaks.
+// when the Magic Router is unreachable. Both are spun up per fuzz run
+// and torn down at the end so nothing leaks.
 
 export interface ProvisionRequest {
   snapshot: Snapshot;
-  region?: string;
 }
 
 export interface SandboxProvider {
@@ -18,36 +24,72 @@ export interface SandboxProvider {
 }
 
 // ─── MagicBlock Private Ephemeral Rollup (primary) ────────────────────────
+// MagicBlock's model is a routing overlay, not a per-session validator
+// spin-up. The Magic Router (a single HTTP endpoint, e.g.
+// https://devnet.magicblock.app) selects the closest ER validator and
+// transparently routes txs touching delegated accounts to that validator.
+// Provisioning here means: open a connection to the router, verify
+// connectivity by asking which validator we'll be pinned to, and (if
+// configured) acquire a Private-ER auth token so the validator accepts
+// our writes.
 class MagicBlockProvider implements SandboxProvider {
   readonly kind = "magicblock" as const;
 
-  async provision(req: ProvisionRequest): Promise<Sandbox> {
-    const providerUrl = requireEnv("MAGICBLOCK_PROVIDER_URL");
-    const apiKey = requireEnv("MAGICBLOCK_API_KEY");
-    const region = req.region ?? process.env.MAGICBLOCK_VALIDATOR_REGION ?? "us-east";
+  async provision(_req: ProvisionRequest): Promise<Sandbox> {
+    const routerUrl = requireEnv("MAGICBLOCK_ROUTER_URL");
 
-    logger.info({ region, slot: req.snapshot.slot.toString() }, "magicblock:provision");
+    const connection = new Connection(routerUrl, "confirmed");
 
-    // The actual provisioning call is made via @magicblock-labs/ephemeral-
-    // rollups-sdk. We keep the wire details in one place so the rest of
-    // the agent only sees a Sandbox handle.
-    //
-    // TODO(integration): replace this stub with the SDK call once we wire
-    // credentials. Contract: must return an RPC URL pointing at a private
-    // validator that has been seeded with `req.snapshot`.
-    const rollupId = `mb-${Date.now().toString(36)}`;
-    const rpcUrl = `${providerUrl.replace(/\/$/, "")}/rollup/${rollupId}/rpc`;
+    let validator;
+    try {
+      validator = await getClosestValidator(connection);
+    } catch (err) {
+      throw new Error(
+        `MagicBlock router unreachable at ${routerUrl}: ${(err as Error).message}`,
+      );
+    }
+
+    // Optional: Private ER access control. When MAGICBLOCK_AUTH_KEYPAIR
+    // points at a keypair file, we acquire a per-session auth token so
+    // the validator gates our writes by signature instead of letting any
+    // public tx touch the delegated state. The token is opaque to us;
+    // we just hold it for the duration of the run.
+    let authToken: string | undefined;
+    const authPath = process.env.MAGICBLOCK_AUTH_KEYPAIR;
+    if (authPath) {
+      const kp = await loadKeypair(authPath);
+      try {
+        authToken = await getAuthToken(routerUrl, kp.publicKey, async (msg) =>
+          nacl.sign.detached(msg, kp.secretKey),
+        );
+      } catch (err) {
+        throw new Error(
+          `MagicBlock private-ER auth failed for ${kp.publicKey.toBase58()}: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    logger.info(
+      {
+        routerUrl,
+        validator: validator.toBase58(),
+        privateAuth: authToken ? "enabled" : "public",
+      },
+      "magicblock:provision",
+    );
 
     return {
       kind: "magicblock",
-      rpcUrl,
+      rpcUrl: routerUrl,
+      validator,
       teardown: async () => {
-        logger.info({ rollupId }, "magicblock:teardown");
-        // TODO(integration): SDK call to destroy the private rollup.
+        // No-op at the connection layer. Per-account delegation leases
+        // are released by the fuzz loop's undelegate calls; if the loop
+        // crashed mid-run, leases auto-expire after their commit_frequency
+        // window, so nothing is permanently stuck.
+        logger.info({ validator: validator.toBase58() }, "magicblock:teardown");
       },
     };
-    // touch apiKey so TS doesn't complain in stub form
-    void apiKey;
   }
 }
 
@@ -85,7 +127,9 @@ export function getSandboxProvider(kind: SandboxKind): SandboxProvider {
 
 // Provision with automatic fallback: try MagicBlock first, drop to Surfpool
 // if the primary provider fails. The CLI surfaces the actual sandbox used
-// in the final report so the operator always knows.
+// in the final report so the operator always knows. Per project policy
+// the prize-eligible demo MUST land on MagicBlock; Surfpool is operator-
+// triage only.
 export async function provisionWithFallback(
   preferred: SandboxKind,
   req: ProvisionRequest,
@@ -103,4 +147,9 @@ function requireEnv(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`missing required env var: ${name}`);
   return v;
+}
+
+async function loadKeypair(path: string): Promise<Keypair> {
+  const raw = await readFile(path, "utf8");
+  return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(raw)));
 }

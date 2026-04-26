@@ -34,7 +34,14 @@ export interface SnapshotAccount {
 export interface Sandbox {
   kind: SandboxKind;
   rpcUrl: string;
-  // Tearing down deletes all state — nothing escapes to mainnet.
+  // The validator handling our txs. Populated for MagicBlock (the closest
+  // ER validator the router selected); undefined for surfpool (the local
+  // box itself is the validator).
+  validator?: PublicKey;
+  // Tearing down releases per-session resources. For MagicBlock this is
+  // a no-op at the connection layer — the lease is per-account-delegation,
+  // and the fuzz loop is responsible for undelegating any state it
+  // delegated during the run.
   teardown(): Promise<void>;
 }
 
@@ -59,6 +66,11 @@ export interface InvariantViolation {
 
 export interface FuzzReport {
   config: Omit<FuzzConfig, "payerKeypairPath">;
+  // The validator that actually executed the run, if known. For the
+  // MagicBlock path this is the ER validator the router pinned us to;
+  // recording it in the report makes it auditable that a Surfpool-only
+  // run didn't accidentally headline as a Private-ER demo.
+  validator?: string;
   snapshotSlot: bigint;
   startedAtMs: number;
   endedAtMs: number;
