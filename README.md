@@ -21,6 +21,85 @@ So researchers either test on stale local forks (and miss real conditions), or l
 
 A **Private Ephemeral Rollup** is a private, high-speed validator the public network can't observe. Move the program's state into one for the duration of a fuzz session, run thousands of adversarial transactions inside, and only commit the final state back to the base layer once the developer has been warned.
 
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          SHADOW FUZZER PIPELINE                            │
+│                                                                             │
+│  ┌──────────┐    ┌──────────┐    ┌──────────────────┐    ┌──────────────┐  │
+│  │  Target   │    │  Helius  │    │  Private Sandbox  │    │    Agent     │  │
+│  │ Program   │───▶│ Snapshot │───▶│  (MagicBlock ER)  │───▶│    Brain     │  │
+│  │ (mainnet) │    │          │    │                    │    │              │  │
+│  └──────────┘    └──────────┘    └──────────────────┘    └──────┬───────┘  │
+│                                         ▲                       │          │
+│                                         │                       ▼          │
+│                                   ┌─────┴─────┐          ┌────────────┐   │
+│                                   │  Surfpool  │          │  Findings  │   │
+│                                   │ (fallback) │          │  + Report  │   │
+│                                   └───────────┘          └────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Agent Brain Pipeline
+
+```
+┌─────────────┐     ┌─────────────────┐     ┌────────────────┐
+│  1. Load IDL │────▶│ 2. Static       │────▶│ 3. Seed State  │
+│              │     │    Analyzer      │     │    (mint, vault │
+│  Parse the   │     │    (MISSING_     │     │    victim +     │
+│  program's   │     │    SIGNER rule)  │     │    deposit)     │
+│  interface   │     │                  │     │                 │
+└─────────────┘     └─────────────────┘     └───────┬────────┘
+                                                     │
+                    ┌─────────────────┐     ┌───────▼────────┐
+                    │ 5. Emit Finding │◀────│ 4. Construct   │
+                    │    + Report     │     │    Adversarial  │
+                    │                 │     │    Transaction  │
+                    │  Only if tx     │     │                 │
+                    │  lands AND      │     │  Sign as        │
+                    │  funds moved    │     │  attacker, pass │
+                    └─────────────────┘     │  victim as owner│
+                                            └────────────────┘
+```
+
+### Sandbox Architecture
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │            FUZZ LOOP                     │
+                    │                                         │
+  Base Layer RPC    │    Sandbox Connection                    │
+  ┌─────────────┐   │    ┌─────────────────────────┐          │
+  │ SPL helpers │   │    │  Exploit transactions    │          │
+  │ createMint  │   │    │  (routed via Magic       │          │
+  │ rent calcs  │   │    │   Router to private ER   │          │
+  │ getAccount  │   │    │   validator)             │          │
+  └──────┬──────┘   │    └────────────┬────────────┘          │
+         │          │                 │                        │
+         ▼          │                 ▼                        │
+  ┌─────────────┐   │    ┌─────────────────────────┐          │
+  │   devnet /  │   │    │  MagicBlock Private ER   │          │
+  │   mainnet   │   │    │  ┌───────────────────┐   │          │
+  │   RPC       │   │    │  │ Validator          │   │          │
+  └─────────────┘   │    │  │ MAS1Dt9q…k57      │   │          │
+                    │    │  │                    │   │          │
+                    │    │  │ Invisible to       │   │          │
+                    │    │  │ public mempool     │   │          │
+                    │    │  └───────────────────┘   │          │
+                    │    │           OR              │          │
+                    │    │  ┌───────────────────┐   │          │
+                    │    │  │ Surfpool (local    │   │          │
+                    │    │  │ fallback)          │   │          │
+                    │    │  └───────────────────┘   │          │
+                    │    └─────────────────────────┘          │
+                    └─────────────────────────────────────────┘
+
+  Why two connections? Magic Router returns slightly different
+  RPC shapes that web3.js strict validators reject. SPL helpers
+  hit the base layer; exploit txs go through the sandbox.
+```
+
 ## What this repo does
 
 ```
@@ -40,60 +119,67 @@ The agent autonomously:
 Prereqs: Node 20+, pnpm, Rust, Solana CLI, Anchor (via [avm](https://www.anchor-lang.com/docs/installation)).
 
 ```bash
-git clone <this-repo> shadow-fuzzer
+git clone https://github.com/notcodesid/shadow-fuzzer.git
 cd shadow-fuzzer
 pnpm install
-anchor build
-anchor test
+pnpm demo
 ```
 
-If you see `Tests 2 passed (2)`, the MVP works on your machine. The agent autonomously rediscovered the planted bug and wrote a report:
+The `demo` command spawns a local validator with the vulnerable program preloaded, then the agent rediscovers the planted bug autonomously (~5 seconds, zero config):
+
+```
+shadow-fuzz demo — boots a local validator with a vulnerable vault
+preloaded, then lets the agent rediscover the planted bug autonomously.
+
+✔ local validator ready (rpc http://127.0.0.1:8899)
+✔ done — 1 finding (1/1 exploit txs landed)
+
+  ✗ MISSING_SIGNER-withdraw-01 [critical] withdraw: position drained without owner signature
+```
+
+Or run the full test suite:
 
 ```bash
+anchor build
+anchor test
 cat reports/report-*.md
 ```
 
-You should see something like:
-
-```
-# Shadow Fuzzer report
-- target:    CbdZT6zkBvgfaWCPUooeTkCZDuRz8Rfwmnhw2Nu6ZooC
-- sandbox:   surfpool
-- findings:  1
-
-## MISSING_SIGNER-withdraw-01 — withdraw: position drained without owner signature
-- invariant:    INV-3
-- severity:     critical
-- evidence tx:  2ycWV5ARip6jiwcg8EC34EEi9Wjz2PrdCtHwdtnqN7S5mctQrE35gF7H6Ety5siM43h3o8WZzQy2NcNyJ8mf648a
-
-Instruction `withdraw` reads `owner` as the privileged role for at least one
-PDA-derived account, but `owner` is neither marked as a signer nor verified
-through a `has_one` / `relations` constraint. Any caller can pass an arbitrary
-pubkey here and the runtime will accept it...
-
-**Confirmed exploit.** The agent constructed a `withdraw` transaction passing
-[victim] as `owner` and signed/paid for the tx with an attacker keypair. The
-transaction landed and transferred 1,000,000 base units to the attacker.
-
-**Fix.** Add either `#[account(has_one = owner)]` on the `position` account,
-or change `owner: UncheckedAccount<'info>` to `owner: Signer<'info>`.
-```
-
-End-to-end runtime: ~5 seconds.
-
 ## What you're looking at
 
-- **`programs/vulnerable-vault/`** — an Anchor 0.31.1 program with a deliberately planted bug. Realistic shape, not a toy. **Do not deploy to mainnet.**
-  - `instructions/withdraw.rs` — the bug: `owner: UncheckedAccount<'info>`, no `has_one`. Anyone can drain any position.
-  - `instructions/delegate_vault.rs` + `undelegate_for_fuzz.rs` — Private-ER access-control flow (CPIs into MagicBlock's Permission Program).
-- **`packages/agent/src/brain/`** — the autonomous discovery loop:
-  - `static_analyzer.ts` — IDL walker that flags missing-signer / has_one shapes
-  - `state.ts` — synthesizes a legitimate vault scenario in the sandbox
-  - `exploit.ts` — concrete missing-signer attacker
-  - `lifecycle.ts` — delegate / undelegate orchestration
-- **`packages/agent/src/sandbox.ts`** — MagicBlock router primary, surfpool fallback
-- **`packages/cli/`** — `shadow-fuzz` binary
-- **`tests/`** — `vault.spec.ts` (manual ground truth) + `brain.spec.ts` (autonomous discovery)
+```
+shadow-fuzzer/
+├── programs/
+│   └── vulnerable-vault/          # Anchor program — deliberately broken
+│       └── src/instructions/
+│           ├── withdraw.rs        # BUG #2: owner: UncheckedAccount, no has_one
+│           ├── deposit.rs         # BUG #1: unchecked + instead of checked_add
+│           ├── delegate_vault.rs  # Private ER delegation flow
+│           └── undelegate_for_fuzz.rs
+├── packages/
+│   ├── agent/src/
+│   │   ├── brain/
+│   │   │   ├── static_analyzer.ts # IDL walker — flags missing-signer shapes
+│   │   │   ├── state.ts           # Synthesizes vault scenario in sandbox
+│   │   │   ├── exploit.ts         # Concrete missing-signer attacker
+│   │   │   └── lifecycle.ts       # Delegate / undelegate orchestration
+│   │   ├── sandbox.ts             # MagicBlock primary, Surfpool fallback
+│   │   ├── snapshot.ts            # Helius-based state capture
+│   │   ├── invariants.ts          # INV-1 / INV-2 / INV-3 checks
+│   │   ├── attacker.ts            # Fuzz loop orchestrator
+│   │   └── report.ts              # Markdown + JSON output
+│   └── cli/src/
+│       ├── commands/
+│       │   ├── demo.ts            # Zero-config demo runner
+│       │   └── run.ts             # Full fuzz against any program
+│       └── util/validator.ts      # Local validator spawning
+├── tests/
+│   ├── vault.spec.ts              # Manual exploit proof (ground truth)
+│   └── brain.spec.ts              # Autonomous rediscovery test
+├── public/
+│   └── index.html                 # Landing page
+└── reports/                       # Generated findings (MD + JSON)
+```
 
 ## Stack
 
