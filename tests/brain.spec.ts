@@ -1,5 +1,4 @@
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, it, expect, beforeAll } from "vitest";
@@ -33,7 +32,10 @@ describe("brain — end-to-end fuzz against local validator", () => {
     // fresh users for victim/attacker; the test wallet just funds them.
     payerKeypairPath =
       process.env.ANCHOR_WALLET ?? `${process.env.HOME ?? ""}/.config/solana/id.json`;
-    reportDir = mkdtempSync(join(tmpdir(), "shadow-fuzz-brain-"));
+    // Persistent under ./reports so the demo recording has a real
+    // artifact to point at. Each run drops a timestamped file in here.
+    reportDir = join(process.cwd(), "reports");
+    mkdirSync(reportDir, { recursive: true });
 
     // Route the surfpool sandbox path at the local test validator instead
     // of expecting a separately-running surfpool node.

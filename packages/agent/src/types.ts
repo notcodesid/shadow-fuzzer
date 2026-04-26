@@ -4,6 +4,11 @@ export type SandboxKind = "magicblock" | "surfpool";
 
 export interface FuzzConfig {
   programId: PublicKey;
+  // Base-layer RPC (e.g. devnet). Used for state-setup operations that
+  // can't be served by the Magic Router (createMint, rent calculations,
+  // SPL helpers that introspect mint/account state). Also used for the
+  // initial snapshot read.
+  baseRpcUrl: string;
   sandbox: SandboxKind;
   budgetTx: number;
   parallelism: number;
@@ -65,7 +70,7 @@ export interface InvariantViolation {
 }
 
 export interface FuzzReport {
-  config: Omit<FuzzConfig, "payerKeypairPath">;
+  config: Omit<FuzzConfig, "payerKeypairPath" | "baseRpcUrl">;
   // The validator that actually executed the run, if known. For the
   // MagicBlock path this is the ER validator the router pinned us to;
   // recording it in the report makes it auditable that a Surfpool-only

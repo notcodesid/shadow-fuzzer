@@ -1,4 +1,5 @@
 import * as anchor from "@coral-xyz/anchor";
+import BN from "bn.js";
 import {
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccount,
@@ -121,7 +122,7 @@ export async function seedVaultState(args: SeedArgs): Promise<SeededVault> {
   await connection.confirmTransaction(openSig, "confirmed");
 
   const depositSig = await methods
-    .deposit!(new anchor.BN(initialDepositAmount.toString()))
+    .deposit!(new BN(initialDepositAmount.toString()))
     .accounts({
       owner: victim.publicKey,
       vault,

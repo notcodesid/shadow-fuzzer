@@ -17,17 +17,18 @@ import { logger } from "./logger.js";
 import type { Finding, FuzzConfig, Sandbox } from "./types.js";
 
 // The fuzz loop's lifecycle:
-//   1. Load the program's IDL (local file by default; on-chain fetch is
-//      a future enhancement when we don't have repo access).
+//   1. Load the program's IDL.
 //   2. Run static analysis to surface candidates worth probing.
-//   3. For each candidate: seed legitimate state, run the concrete
-//      exploit constructor, capture any confirmed Finding.
-//   4. Return tx counters and findings to the orchestrator.
-//
-// We bias hard toward a small number of high-precision attempts rather
-// than a wide sweep — the demo wants signal, not coverage. When the
-// brain grows an LLM-driven attack synthesizer, it'll plug in here as
-// an additional source of candidates without changing this loop's shape.
+//   3. Seed legitimate state on the BASE LAYER (SPL helpers like
+//      createMint depend on standard RPC responses that the Magic Router
+//      doesn't always serve identically).
+//   4. If sandbox is magicblock: delegate the vault PDA into the Private
+//      ER. After this, txs touching the vault route via the Magic Router
+//      to the chosen ER validator.
+//   5. Run exploits via the SANDBOX connection so any private-validator
+//      routing actually applies.
+//   6. Always undelegate at the end (finally block) so leases don't
+//      orphan even on crashes.
 
 export interface FuzzLoopArgs {
   config: FuzzConfig;
@@ -56,20 +57,23 @@ export async function runFuzzLoop(args: FuzzLoopArgs): Promise<FuzzLoopResult> {
     return { txsAttempted: 0, txsLanded: 0, findings: [] };
   }
 
-  const connection = new Connection(sandbox.rpcUrl, "confirmed");
-  const provider = new anchor.AnchorProvider(connection, new anchor.Wallet(payer), {
-    commitment: "confirmed",
-  });
-  const program = new anchor.Program(idl, provider) as unknown as anchor.Program;
+  // Two connections, two providers, two Programs. The base connection
+  // serves SPL helpers that internally hit `getMinimumBalanceForRent
+  // Exemption` etc. — those calls don't need ER routing and the Magic
+  // Router responds with a slightly different shape that web3.js's
+  // strict superstruct validators reject. The sandbox connection is
+  // where we want exploit txs to land so the validator-routing actually
+  // applies.
+  const baseConn = new Connection(config.baseRpcUrl, "confirmed");
+  const sandboxConn = new Connection(sandbox.rpcUrl, "confirmed");
 
-  // Single seeded scenario shared across all candidates today. As the
-  // brain grows it may want a fresh seed per candidate so independent
-  // exploits can't poison each other's state — wire that here when the
-  // need shows up.
+  const baseProgram = makeProgram(idl, baseConn, payer);
+  const sandboxProgram = makeProgram(idl, sandboxConn, payer);
+
   const seeded = await seedVaultState({
     programId: config.programId,
-    program,
-    connection,
+    program: baseProgram,
+    connection: baseConn,
     payer,
   });
   logger.info(
@@ -81,17 +85,14 @@ export async function runFuzzLoop(args: FuzzLoopArgs): Promise<FuzzLoopResult> {
     "brain:state-seeded",
   );
 
-  // For the magicblock path: move the vault state into the Private ER
-  // before running exploits. Surfpool stays at base-layer (it IS the
-  // base layer). A failed delegate doesn't crash the run — we still
-  // get a base-layer-tagged report — but it does mean the demo isn't
-  // prize-eligible, so the operator should re-run when the router is
-  // healthy.
+  // Delegate against the BASE layer. The delegation program lives on
+  // the base layer; the Magic Router can't process the delegate ix
+  // itself because the vault still belongs to our program at this point.
   if (sandbox.kind === "magicblock") {
     await delegateVaultForFuzz({
       programId: config.programId,
-      program,
-      connection,
+      program: baseProgram,
+      connection: baseConn,
       payer,
       seeded,
       validator: sandbox.validator,
@@ -108,8 +109,12 @@ export async function runFuzzLoop(args: FuzzLoopArgs): Promise<FuzzLoopResult> {
       const finding = await runExploit({
         candidate,
         programId: config.programId,
-        program,
-        connection,
+        // Exploits go through the SANDBOX connection so the Magic Router
+        // routes them at the validator selected during provision. For
+        // surfpool this is the same as base; for magicblock it's the
+        // private validator endpoint.
+        program: sandboxProgram,
+        connection: sandboxConn,
         payer,
         seeded,
         findingId: nextFindingId(candidate, findings.length),
@@ -125,10 +130,12 @@ export async function runFuzzLoop(args: FuzzLoopArgs): Promise<FuzzLoopResult> {
     }
   } finally {
     if (sandbox.kind === "magicblock") {
+      // Undelegate on the base layer so the commit lands and observers
+      // at the base layer see the post-fuzz state.
       await undelegateVaultForFuzz({
         programId: config.programId,
-        program,
-        connection,
+        program: baseProgram,
+        connection: baseConn,
         payer,
         seeded,
       });
@@ -136,6 +143,13 @@ export async function runFuzzLoop(args: FuzzLoopArgs): Promise<FuzzLoopResult> {
   }
 
   return { txsAttempted: attempted, txsLanded: landed, findings };
+}
+
+function makeProgram(idl: Idl, connection: Connection, payer: Keypair): anchor.Program {
+  const provider = new anchor.AnchorProvider(connection, new anchor.Wallet(payer), {
+    commitment: "confirmed",
+  });
+  return new anchor.Program(idl, provider) as unknown as anchor.Program;
 }
 
 function capCandidates(candidates: Candidate[], budgetTx: number): Candidate[] {
@@ -154,17 +168,11 @@ function capCandidates(candidates: Candidate[], budgetTx: number): Candidate[] {
 }
 
 function nextFindingId(candidate: Candidate, currentCount: number): string {
-  // Stable, sortable, human-readable id. Doesn't try to be unique
-  // across runs — each report is its own scope.
   const seq = String(currentCount + 1).padStart(2, "0");
   return `${candidate.kind}-${candidate.instructionName}-${seq}`;
 }
 
 async function loadIdl(config: FuzzConfig): Promise<Idl> {
-  // Default convention: target/idl/<program>.json relative to the
-  // process cwd. The CLI's working directory is the repo root, so this
-  // lands on the freshly-built artifact. Override-by-env hook is left
-  // for when we add on-chain `fetchIdl` fallback.
   const path = process.env.SHADOW_IDL_PATH ?? defaultIdlPath();
   const raw = await readFile(path, "utf8");
   const idl = JSON.parse(raw) as Idl;

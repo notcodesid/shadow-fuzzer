@@ -26,6 +26,7 @@ export interface RunFuzzInput {
 export async function runFuzz(input: RunFuzzInput): Promise<FuzzReport> {
   const config: FuzzConfig = {
     programId: new PublicKey(input.programId),
+    baseRpcUrl: input.rpcUrl,
     sandbox: input.sandbox,
     budgetTx: input.budgetTx,
     parallelism: input.parallelism,

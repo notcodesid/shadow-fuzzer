@@ -27,6 +27,10 @@ program
   .action(runCommand);
 
 program.parseAsync().catch((err) => {
-  console.error(kleur.red(`shadow-fuzz: ${(err as Error).message}`));
+  const e = err as Error;
+  console.error(kleur.red(`shadow-fuzz: ${e.message}`));
+  if (process.env.SHADOW_DEBUG) {
+    console.error(e.stack);
+  }
   process.exitCode = 1;
 });
