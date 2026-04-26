@@ -931,8 +931,9 @@
     <li><a href="#how">How it works</a></li>
     <li><a href="#install">Install</a></li>
     <li><a href="#stack">Stack</a></li>
+    <li><a href="https://github.com/notcodesid/shadow-fuzzer" target="_blank">GitHub ↗</a></li>
   </ul>
-  <a class="nav-cta" href="#install">→ Try it</a>
+  <a class="nav-cta" href="https://github.com/notcodesid/shadow-fuzzer" target="_blank">→ GitHub</a>
 </nav>
 
 <!-- HERO -->
@@ -950,7 +951,8 @@
       A <strong>private sandbox</strong> where an AI security agent fuzzes Solana programs without leaking exploits to MEV bots.
     </p>
     <div class="hero-actions">
-      <a class="btn-primary" href="#install">→ Run in 90 seconds</a>
+      <a class="btn-primary" href="https://github.com/notcodesid/shadow-fuzzer" target="_blank">→ View on GitHub</a>
+      <a class="btn-secondary" href="#install">Try it locally</a>
       <a class="btn-secondary" href="#how">How it works</a>
     </div>
     <div class="hero-badge">
@@ -1168,21 +1170,27 @@
     <button class="copy-btn" onclick="copyInstall(this)">Copy</button>
     <div id="installCode">
       <span class="t-line"><span class="comment"># clone & install</span></span>
-      <span class="t-line"><span class="prompt">$</span><span class="cmd"> git clone &lt;this-repo&gt; shadow-fuzzer</span></span>
+      <span class="t-line"><span class="prompt">$</span><span class="cmd"> git clone https://github.com/notcodesid/shadow-fuzzer.git</span></span>
       <span class="t-line"><span class="prompt">$</span><span class="cmd"> cd shadow-fuzzer && pnpm install</span></span>
       <span class="t-line"> </span>
-      <span class="t-line"><span class="comment"># build the on-chain program</span></span>
-      <span class="t-line"><span class="prompt">$</span><span class="cmd"> anchor build</span></span>
+      <span class="t-line"><span class="comment"># run the demo — zero config, finds the bug in ~5 seconds</span></span>
+      <span class="t-line"><span class="prompt">$</span><span class="cmd"> pnpm demo</span></span>
       <span class="t-line"> </span>
-      <span class="t-line"><span class="comment"># run — agent finds the bug autonomously</span></span>
-      <span class="t-line"><span class="prompt">$</span><span class="cmd"> anchor test</span></span>
+      <span class="t-line"><span class="comment"># or run the full test suite</span></span>
+      <span class="t-line"><span class="prompt">$</span><span class="cmd"> anchor build &amp;&amp; anchor test</span></span>
       <span class="t-line"> </span>
       <span class="t-line"><span class="comment"># read the report</span></span>
       <span class="t-line"><span class="prompt">$</span><span class="cmd"> cat reports/report-*.md</span></span>
     </div>
   </div>
   <div style="margin-top:24px; font-family: var(--mono); font-size:13px; color: var(--muted);">
-    Expected output: <span style="color:var(--green); font-weight:700">Tests 2 passed (2)</span> — the agent autonomously rediscovered the planted bug.
+    Expected output: <span style="color:var(--green); font-weight:700">1 finding — MISSING_SIGNER-withdraw-01 [critical]</span>
+  </div>
+  <div style="margin-top:16px;">
+    <a class="btn-secondary" href="https://github.com/notcodesid/shadow-fuzzer" target="_blank" style="display:inline-flex; align-items:center; gap:8px;">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      View source on GitHub
+    </a>
   </div>
 </section>
 
@@ -1273,11 +1281,12 @@
 
 <!-- CTA -->
 <section class="cta-section">
-  <div class="section-label reveal" style="justify-content:center">Deploy on devnet</div>
-  <h2 class="reveal">Program live at CbdZT6…ZooC</h2>
-  <p class="lead reveal">Deployed at slot 458238441 on devnet. MagicBlock provisions cleanly, validator selected. Two ER lifecycle gaps remain — not fundamental, just iteration needed.</p>
+  <div class="section-label reveal" style="justify-content:center">Get started</div>
+  <h2 class="reveal">Try it yourself.</h2>
+  <p class="lead reveal">Clone the repo, run one command, watch the agent find a real vulnerability in 5 seconds. Program also deployed on devnet at CbdZT6…ZooC.</p>
   <div class="hero-actions reveal" style="justify-content:center">
-    <a class="btn-primary" href="https://explorer.solana.com/address/CbdZT6zkBvgfaWCPUooeTkCZDuRz8Rfwmnhw2Nu6ZooC?cluster=devnet" target="_blank">→ Solana Explorer</a>
+    <a class="btn-primary" href="https://github.com/notcodesid/shadow-fuzzer" target="_blank">→ GitHub Repository</a>
+    <a class="btn-secondary" href="https://explorer.solana.com/address/CbdZT6zkBvgfaWCPUooeTkCZDuRz8Rfwmnhw2Nu6ZooC?cluster=devnet" target="_blank">Solana Explorer ↗</a>
     <a class="btn-secondary" href="https://luma.com/kfv9avi8" target="_blank">Solana Blitz v4 ↗</a>
   </div>
 </section>
@@ -1286,6 +1295,7 @@
 <footer>
   <div style="font-family:var(--mono); font-size:13px; color: var(--green); font-weight:700;">shadow_fuzzer</div>
   <div class="footer-built">
+    <a href="https://github.com/notcodesid/shadow-fuzzer" target="_blank">GitHub</a>
     Built with
     <a href="https://magicblock.gg" target="_blank">MagicBlock</a>
     <a href="https://helius.dev" target="_blank">Helius</a>
@@ -1489,11 +1499,9 @@
   // Copy install button
   function copyInstall(btn) {
     const lines = [
-      'git clone <this-repo> shadow-fuzzer',
+      'git clone https://github.com/notcodesid/shadow-fuzzer.git',
       'cd shadow-fuzzer && pnpm install',
-      'anchor build',
-      'anchor test',
-      'cat reports/report-*.md'
+      'pnpm demo'
     ].join('\n');
     navigator.clipboard.writeText(lines).then(() => {
       btn.textContent = 'Copied!';
