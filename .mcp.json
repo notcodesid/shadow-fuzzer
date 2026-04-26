@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "helius": {
+      "command": "npx",
+      "args": ["-y", "@helius-labs/mcp-server"],
+      "env": {
+        "HELIUS_API_KEY": "${HELIUS_API_KEY}"
+      }
+    },
+    "solana": {
+      "command": "npx",
+      "args": ["-y", "@sendai/solana-mcp"],
+      "env": {
+        "RPC_URL": "${HELIUS_RPC_URL}",
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+      }
+    },
+    "anchor": {
+      "command": "npx",
+      "args": ["-y", "@coral-xyz/anchor-mcp"]
+    },
+    "solana-fender": {
+      "command": "npx",
+      "args": ["-y", "@solana-fender/mcp-server"]
+    }
+  }
+}
