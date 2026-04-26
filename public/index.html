@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shadow Fuzzer — Private AI Security Sandbox for Solana</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: oklch(0.07 0.012 245);
+    --bg2: oklch(0.10 0.014 245);
+    --bg3: oklch(0.13 0.016 245);
+    --border: oklch(0.22 0.02 245);
+    --text: oklch(0.88 0.015 100);
+    --muted: oklch(0.55 0.015 245);
+    --green: oklch(0.76 0.19 145);
+    --green-dim: oklch(0.55 0.14 145);
+    --green-glow: oklch(0.76 0.19 145 / 0.15);
+    --purple: oklch(0.72 0.18 290);
+    --purple-dim: oklch(0.50 0.14 290);
+    --red: oklch(0.65 0.18 25);
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Space Grotesk', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0.4;
+  }
+
+  /* ─── NAV ─── */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: 20px 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.3s, background 0.3s, backdrop-filter 0.3s;
+  }
+  nav.scrolled {
+    border-color: var(--border);
+    background: oklch(0.07 0.012 245 / 0.85);
+    backdrop-filter: blur(12px);
+  }
+  .nav-logo {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--green);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+  }
+  .nav-logo span { color: var(--muted); font-weight: 300; }
+  .nav-links {
+    display: flex;
+    gap: 32px;
+    list-style: none;
+  }
+  .nav-links a {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    text-decoration: none;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transition: color 0.2s;
+  }
+  .nav-links a:hover { color: var(--green); }
+  .nav-cta {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--bg);
+    background: var(--green);
+    border: none;
+    padding: 8px 20px;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+    transition: opacity 0.2s, box-shadow 0.2s;
+  }
+  .nav-cta:hover {
+    opacity: 0.85;
+    box-shadow: 0 0 20px var(--green-glow);
+  }
+
+  /* ─── HERO ─── */
+  .hero {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: 48px;
+    padding: 120px 48px 80px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-left { display: flex; flex-direction: column; }
+
+  /* Grid background */
+  .hero::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(oklch(0.22 0.02 245 / 0.3) 1px, transparent 1px),
+      linear-gradient(90deg, oklch(0.22 0.02 245 / 0.3) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, black 20%, transparent 80%);
+    pointer-events: none;
+  }
+
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--green);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.2s forwards;
+  }
+  .hero-eyebrow::before {
+    content: '';
+    display: inline-block;
+    width: 24px;
+    height: 1px;
+    background: var(--green);
+  }
+
+  .hero-title {
+    font-family: var(--mono);
+    font-size: clamp(42px, 7vw, 96px);
+    font-weight: 700;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    max-width: 900px;
+    opacity: 0;
+    animation: fadeUp 0.9s 0.35s forwards;
+  }
+  .hero-title .shadow { color: var(--muted); }
+  .hero-title .fuzzer { color: var(--green); }
+  .hero-title .cursor {
+    display: inline-block;
+    width: 0.5em;
+    height: 0.85em;
+    background: var(--green);
+    vertical-align: middle;
+    animation: blink 1s step-end infinite;
+    margin-left: 6px;
+    position: relative;
+    top: -0.05em;
+  }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+  .hero-sub {
+    font-size: 18px;
+    font-weight: 400;
+    color: var(--muted);
+    max-width: 560px;
+    margin-top: 28px;
+    line-height: 1.65;
+    opacity: 0;
+    animation: fadeUp 0.9s 0.5s forwards;
+  }
+  .hero-sub strong { color: var(--text); font-weight: 500; }
+
+  .hero-actions {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-top: 44px;
+    opacity: 0;
+    animation: fadeUp 0.9s 0.65s forwards;
+  }
+  .btn-primary {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--bg);
+    background: var(--green);
+    border: none;
+    padding: 14px 32px;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: box-shadow 0.2s, opacity 0.2s;
+  }
+  .btn-primary:hover {
+    opacity: 0.9;
+    box-shadow: 0 0 40px oklch(0.76 0.19 145 / 0.4);
+  }
+  .btn-secondary {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 14px 32px;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .btn-secondary:hover { border-color: var(--muted); color: var(--text); }
+
+  .hero-badge {
+    margin-top: 64px;
+    opacity: 0;
+    animation: fadeUp 0.9s 0.8s forwards;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--purple);
+    border: 1px solid var(--purple-dim);
+    padding: 4px 12px;
+    letter-spacing: 0.06em;
+    background: oklch(0.72 0.18 290 / 0.06);
+  }
+
+  /* ─── LIVE TERMINAL ─── */
+  .hero-terminal {
+    position: relative;
+    height: 540px;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    animation: fadeUp 1s 0.5s forwards;
+  }
+  .live-terminal {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: oklch(0.04 0.01 245);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    position: relative;
+  }
+  .live-terminal::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 60%, oklch(0.04 0.01 245) 100%);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .lt-bar {
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    z-index: 3;
+  }
+  .lt-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: 8px;
+    letter-spacing: 0.06em;
+  }
+  .lt-status {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .lt-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  .lt-dot.idle { background: var(--muted); animation: none; }
+  .lt-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 20px 40px;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.85;
+    scrollbar-width: none;
+    z-index: 1;
+  }
+  .lt-body::-webkit-scrollbar { display: none; }
+  .lt-line { display: flex; gap: 10px; opacity: 0; }
+  .lt-line.show { opacity: 1; }
+  .lt-line.show.fade-in { animation: fadeUp 0.25s ease forwards; }
+  .lt-prompt { color: var(--green); flex-shrink: 0; }
+  .lt-prompt.agent { color: var(--purple); }
+  .lt-prompt.sys { color: var(--muted); }
+  .lt-text { color: var(--text); }
+  .lt-text.dim { color: var(--muted); }
+  .lt-text.green { color: var(--green); }
+  .lt-text.red { color: var(--red); }
+  .lt-text.purple { color: var(--purple); }
+  .lt-text.yellow { color: oklch(0.76 0.16 60); }
+  .lt-text.bold { font-weight: 700; }
+  .lt-cursor-line { display: flex; gap: 10px; }
+  .lt-cursor {
+    display: inline-block;
+    width: 7px; height: 13px;
+    background: var(--green);
+    animation: blink 1s step-end infinite;
+    vertical-align: middle;
+    margin-left: 2px;
+  }
+  .lt-footer {
+    border-top: 1px solid var(--border);
+    background: var(--bg3);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    z-index: 3;
+  }
+  .lt-progress-bar {
+    flex: 1;
+    height: 2px;
+    background: var(--border);
+    margin: 0 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .lt-progress-fill {
+    position: absolute;
+    top: 0; left: 0; height: 100%;
+    background: var(--green);
+    width: 0%;
+    transition: width 0.4s ease;
+    box-shadow: 0 0 8px var(--green-glow);
+  }
+  .lt-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .lt-btn:hover { color: var(--green); border-color: var(--green-dim); }
+  .lt-step-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+
+  /* Glow orb */
+  .hero-orb {
+    position: absolute;
+    top: 15%;
+    right: -5%;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, oklch(0.76 0.19 145 / 0.06) 0%, transparent 70%);
+    pointer-events: none;
+    animation: pulse 6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.7; } }
+
+  /* ─── FLOW DIAGRAM ─── */
+  .flow-section {
+    padding: 80px 48px;
+    border-top: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .flow-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    overflow-x: auto;
+    padding: 0 0 8px;
+    scrollbar-width: none;
+  }
+  .flow-bar::-webkit-scrollbar { display: none; }
+  .flow-node {
+    flex-shrink: 0;
+    padding: 14px 20px;
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    color: var(--text);
+    letter-spacing: 0.04em;
+    position: relative;
+    white-space: nowrap;
+    transition: border-color 0.3s, background 0.3s;
+  }
+  .flow-node.active {
+    border-color: var(--green);
+    background: var(--green-glow);
+    color: var(--green);
+    box-shadow: 0 0 20px var(--green-glow);
+  }
+  .flow-node .label {
+    font-size: 10px;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 4px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .flow-arrow {
+    flex-shrink: 0;
+    color: var(--green-dim);
+    font-size: 18px;
+    padding: 0 6px;
+    line-height: 1;
+    margin-top: 8px;
+  }
+
+  /* ─── SECTION COMMON ─── */
+  section {
+    padding: 100px 48px;
+    border-top: 1px solid var(--border);
+  }
+  .section-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--green);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .section-label::before {
+    content: '';
+    display: inline-block;
+    width: 20px;
+    height: 1px;
+    background: var(--green);
+  }
+  h2 {
+    font-family: var(--mono);
+    font-size: clamp(28px, 4vw, 52px);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    max-width: 700px;
+    margin-bottom: 20px;
+  }
+  .lead {
+    font-size: 17px;
+    color: var(--muted);
+    line-height: 1.7;
+    max-width: 600px;
+    margin-bottom: 48px;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .reveal.visible { opacity: 1; transform: none; }
+
+  /* ─── PROBLEM SECTION ─── */
+  .problem-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    margin-top: 48px;
+    border: 1px solid var(--border);
+  }
+  .problem-card {
+    background: var(--bg);
+    padding: 36px 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .problem-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px;
+    height: 0;
+    background: var(--red);
+    transition: height 0.6s ease;
+  }
+  .problem-card.visible::before { height: 100%; }
+  .problem-card h3 {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--red);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .problem-card p {
+    font-size: 15px;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+  .problem-card p strong { color: var(--text); }
+
+  /* ─── INSIGHT SECTION ─── */
+  .insight-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 64px;
+    align-items: center;
+    margin-top: 48px;
+  }
+  .insight-visual {
+    position: relative;
+    height: 340px;
+  }
+  .sandbox-box {
+    position: absolute;
+    inset: 0;
+    border: 1px solid var(--green-dim);
+    background: oklch(0.76 0.19 145 / 0.03);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+  }
+  .sandbox-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--green-dim);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    position: absolute;
+    top: 12px;
+    left: 16px;
+  }
+  .sandbox-label::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: calc(100% + 8px);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    transform: translateY(-50%);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { box-shadow: 0 0 0 0 var(--green-glow); }
+    50% { box-shadow: 0 0 0 6px transparent; }
+  }
+
+  .tx-list {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--green-dim);
+    list-style: none;
+    text-align: left;
+    width: 80%;
+  }
+  .tx-list li {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    opacity: 0;
+  }
+  .tx-list li.tx-appear { animation: fadeUp 0.4s forwards; }
+  .tx-list li .tx-status { color: var(--green); }
+  .tx-list li .tx-status.fail { color: var(--red); }
+
+  .shield-icon {
+    width: 56px;
+    height: 56px;
+    border: 2px solid var(--green);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .shield-icon::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border: 1px solid var(--green-dim);
+  }
+
+  /* ─── HOW IT WORKS ─── */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-top: 48px;
+  }
+  .step {
+    background: var(--bg);
+    padding: 32px 36px;
+    display: grid;
+    grid-template-columns: 64px 1fr auto;
+    gap: 24px;
+    align-items: start;
+    cursor: default;
+    transition: background 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .step::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: 0;
+    background: var(--green-glow);
+    transition: width 0.4s ease;
+  }
+  .step:hover::before { width: 100%; }
+  .step-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--green);
+    letter-spacing: 0.1em;
+    padding-top: 2px;
+  }
+  .step-content h3 {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
+  }
+  .step-content p {
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+  .step-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    white-space: nowrap;
+    align-self: center;
+  }
+
+  /* ─── REPORT SAMPLE ─── */
+  .report-section {
+    background: var(--bg);
+  }
+  .terminal {
+    background: oklch(0.05 0.01 245);
+    border: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.8;
+    margin-top: 48px;
+    overflow: hidden;
+  }
+  .terminal-bar {
+    background: var(--bg3);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot-r { background: #FF5F57; }
+  .dot-y { background: #FFBD2E; }
+  .dot-g { background: #28CA41; }
+  .terminal-filename {
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: 8px;
+    letter-spacing: 0.06em;
+  }
+  .terminal-body { padding: 28px 32px; }
+  .t-comment { color: var(--muted); }
+  .t-key { color: var(--purple); }
+  .t-val { color: var(--text); }
+  .t-string { color: oklch(0.76 0.16 60); }
+  .t-green { color: var(--green); font-weight: 700; }
+  .t-red { color: var(--red); }
+  .t-head { color: var(--green); font-weight: 700; font-size: 15px; }
+  .t-line { display: block; }
+
+  /* ─── INSTALL ─── */
+  .install-section {}
+  .code-block {
+    background: oklch(0.05 0.01 245);
+    border: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 2;
+    padding: 32px 36px;
+    margin-top: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .code-block .prompt { color: var(--green); margin-right: 8px; }
+  .code-block .cmd { color: var(--text); }
+  .code-block .comment { color: var(--muted); }
+  .copy-btn {
+    position: absolute;
+    top: 16px; right: 16px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .copy-btn:hover { color: var(--green); border-color: var(--green-dim); }
+
+  /* ─── STACK TABLE ─── */
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-top: 48px;
+  }
+  .stack-card {
+    background: var(--bg);
+    padding: 28px 28px;
+    transition: background 0.2s;
+  }
+  .stack-card:hover { background: var(--bg2); }
+  .stack-card .layer {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .stack-card .pick {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .stack-card .pick .accent { color: var(--green); }
+  .stack-card .desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* ─── STATUS TABLE ─── */
+  .status-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 13px;
+    margin-top: 48px;
+    border: 1px solid var(--border);
+  }
+  .status-table th {
+    text-align: left;
+    padding: 14px 20px;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .status-table td {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  .status-table td:first-child {
+    color: var(--text);
+    font-weight: 500;
+    width: 22%;
+  }
+  .status-table td.done { color: var(--green); }
+  .status-table td.partial { color: oklch(0.76 0.16 60); }
+  .status-table td.planned { color: var(--muted); }
+  .pill {
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 8px;
+    letter-spacing: 0.06em;
+    margin-right: 4px;
+    border: 1px solid currentColor;
+  }
+  .pill-green { color: var(--green); }
+  .pill-yellow { color: oklch(0.76 0.16 60); }
+  .pill-muted { color: var(--muted); }
+
+  /* ─── CTA ─── */
+  .cta-section {
+    text-align: center;
+    padding: 120px 48px;
+    position: relative;
+    overflow: hidden;
+  }
+  .cta-section::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 700px;
+    height: 400px;
+    background: radial-gradient(ellipse, oklch(0.76 0.19 145 / 0.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .cta-section h2 { max-width: 100%; font-size: clamp(32px, 5vw, 64px); }
+  .cta-section .lead { margin: 0 auto 48px; text-align: center; }
+
+  /* ─── FOOTER ─── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 40px 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .footer-built {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+  }
+  .footer-built a {
+    color: var(--muted);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  .footer-built a:hover { color: var(--green); }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 900px) {
+    nav { padding: 16px 24px; }
+    .nav-links { display: none; }
+    .hero { grid-template-columns: 1fr; padding: 120px 24px 60px; }
+    .hero-terminal { height: 380px; }
+    section { padding: 64px 24px; }
+    .flow-section { padding: 48px 24px; }
+    .insight-layout { grid-template-columns: 1fr; }
+    .insight-visual { height: 240px; }
+    .problem-grid { grid-template-columns: 1fr; }
+    .stack-grid { grid-template-columns: 1fr 1fr; }
+    footer { flex-direction: column; gap: 16px; text-align: center; }
+    .step { grid-template-columns: 48px 1fr; }
+    .step-tag { display: none; }
+  }
+  @media (max-width: 600px) {
+    .stack-grid { grid-template-columns: 1fr; }
+    .hero-title { font-size: 36px; }
+    .hero-actions { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="nav">
+  <a class="nav-logo" href="#">shadow<span>_</span>fuzzer</a>
+  <ul class="nav-links">
+    <li><a href="#problem">Problem</a></li>
+    <li><a href="#how">How it works</a></li>
+    <li><a href="#install">Install</a></li>
+    <li><a href="#stack">Stack</a></li>
+  </ul>
+  <a class="nav-cta" href="#install">→ Try it</a>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-orb"></div>
+
+  <!-- LEFT -->
+  <div class="hero-left">
+    <div class="hero-eyebrow">Built for Solana Blitz v4 — Agentic + Ephemeral Rollups</div>
+    <h1 class="hero-title">
+      <span class="shadow">SHADOW</span><br/>
+      <span class="fuzzer">FUZZER<span class="cursor"></span></span>
+    </h1>
+    <p class="hero-sub">
+      A <strong>private sandbox</strong> where an AI security agent fuzzes Solana programs without leaking exploits to MEV bots.
+    </p>
+    <div class="hero-actions">
+      <a class="btn-primary" href="#install">→ Run in 90 seconds</a>
+      <a class="btn-secondary" href="#how">How it works</a>
+    </div>
+    <div class="hero-badge">
+      <span class="badge">MagicBlock Ephemeral Rollups</span>
+      <span class="badge">Anchor 0.31.1</span>
+      <span class="badge">TypeScript Agent</span>
+    </div>
+  </div>
+
+  <!-- RIGHT — live terminal -->
+  <div class="hero-terminal">
+    <div class="live-terminal">
+      <div class="lt-bar">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+        <span class="lt-title">shadow-fuzz — agent session</span>
+        <div class="lt-status">
+          <div class="lt-dot" id="ltDot"></div>
+          <span id="ltStatusText" style="color:var(--green);font-family:var(--mono);font-size:10px;letter-spacing:0.08em;">RUNNING</span>
+        </div>
+      </div>
+      <div class="lt-body" id="ltBody">
+        <!-- lines injected by JS -->
+      </div>
+    </div>
+    <div class="lt-footer">
+      <button class="lt-btn" id="ltRestart" onclick="restartTerminal()">↺ restart</button>
+      <div class="lt-progress-bar"><div class="lt-progress-fill" id="ltProgress"></div></div>
+      <span class="lt-step-label" id="ltStepLabel">step 0 / 5</span>
+    </div>
+  </div>
+</header>
+
+<!-- FLOW DIAGRAM -->
+<div class="flow-section">
+  <div class="flow-bar" id="flowBar">
+    <div class="flow-node">
+      <span class="label">Input</span>
+      Mainnet program
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">
+      <span class="label">Helius</span>
+      State snapshot
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node active">
+      <span class="label">MagicBlock ER</span>
+      Private sandbox
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">
+      <span class="label">Agent</span>
+      AI fuzzes 1000s of txs
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">
+      <span class="label">Output</span>
+      Signed report
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">
+      <span class="label">Base layer</span>
+      Commit clean state
+    </div>
+  </div>
+</div>
+
+<!-- PROBLEM -->
+<section id="problem">
+  <div class="section-label reveal">01 — The problem</div>
+  <h2 class="reveal">You can't safely test a real bug on Solana mainnet.</h2>
+  <p class="lead reveal">Smart contracts are live and public. The moment you submit a candidate exploit transaction, the race is already lost.</p>
+  <div class="problem-grid reveal">
+    <div class="problem-card">
+      <h3>⬡ Mempool exposure</h3>
+      <p>Every transaction is <strong>visible in the public mempool</strong> before it executes. There is no private staging area.</p>
+    </div>
+    <div class="problem-card">
+      <h3>⬡ MEV front-running</h3>
+      <p>MEV bots scan pending txs continuously. If your exploit <strong>looks profitable, they copy and front-run it</strong> before your tx lands.</p>
+    </div>
+    <div class="problem-card">
+      <h3>⬡ Stale local forks</h3>
+      <p>Testing on a local validator <strong>misses real mainnet conditions</strong> — oracle prices, account states, CPI targets.</p>
+    </div>
+    <div class="problem-card">
+      <h3>⬡ Lost bounties</h3>
+      <p>Researchers confirm the bug but <strong>lose the funds to a bot</strong>. The vulnerability gets exploited anyway, unfixed.</p>
+    </div>
+  </div>
+</section>
+
+<!-- INSIGHT -->
+<section id="insight" style="background: var(--bg2);">
+  <div class="section-label reveal">02 — The insight</div>
+  <div class="insight-layout">
+    <div>
+      <h2 class="reveal">A private rollup the network can't observe.</h2>
+      <p class="lead reveal" style="margin-bottom:0;">A <strong style="color:var(--text)">Private Ephemeral Rollup</strong> is a high-speed validator no external node can watch. Move the program's state into one for a fuzz session — run thousands of adversarial transactions inside — then commit the final state back once the developer has been warned.</p>
+    </div>
+    <div class="insight-visual reveal">
+      <div class="sandbox-box">
+        <span class="sandbox-label">Private ER — invisible to mainnet</span>
+        <div class="shield-icon">
+          <svg width="24" height="28" viewBox="0 0 24 28" fill="none">
+            <path d="M12 1L2 5v8c0 6 4.5 11 10 12 5.5-1 10-6 10-12V5L12 1z" stroke="oklch(0.76 0.19 145)" stroke-width="1.5" fill="none"/>
+            <path d="M8 14l3 3 5-5" stroke="oklch(0.76 0.19 145)" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <ul class="tx-list" id="txList">
+          <li><span>fuzz_withdraw_01</span><span class="tx-status fail">REFUTED</span></li>
+          <li><span>fuzz_withdraw_02</span><span class="tx-status fail">REFUTED</span></li>
+          <li><span>fuzz_withdraw_03</span><span class="tx-status">CONFIRMED ✓</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section id="how">
+  <div class="section-label reveal">03 — Agent brain</div>
+  <h2 class="reveal">Five autonomous steps from IDL to signed finding.</h2>
+  <p class="lead reveal">No test files. No hints. The agent reads the program interface and works it out.</p>
+  <div class="steps reveal">
+    <div class="step">
+      <div class="step-num">01 ——</div>
+      <div class="step-content">
+        <h3>Read the IDL</h3>
+        <p>Ingests the program's Interface Definition Language. No test files or human hints required.</p>
+      </div>
+      <div class="step-tag">static_analyzer.ts</div>
+    </div>
+    <div class="step">
+      <div class="step-num">02 ——</div>
+      <div class="step-content">
+        <h3>Flag suspicious shapes</h3>
+        <p>Identifies accounts named <code style="color:var(--green);font-size:12px">owner</code> that are neither signers nor <code style="color:var(--green);font-size:12px">has_one</code>-verified, but referenced by sibling PDA seeds. High-precision, low false-positive.</p>
+      </div>
+      <div class="step-tag">MISSING_SIGNER rule</div>
+    </div>
+    <div class="step">
+      <div class="step-num">03 ——</div>
+      <div class="step-content">
+        <h3>Synthesize a legitimate scenario</h3>
+        <p>Sets up mint, vault, and victim with a real deposit inside the private sandbox. Realistic conditions, not toy data.</p>
+      </div>
+      <div class="step-tag">state.ts</div>
+    </div>
+    <div class="step">
+      <div class="step-num">04 ——</div>
+      <div class="step-content">
+        <h3>Construct an adversarial transaction</h3>
+        <p>Builds a concrete attack: passes victim as <code style="color:var(--green);font-size:12px">owner</code>, signs with an attacker keypair. Submits it. Confirms or refutes the candidate.</p>
+      </div>
+      <div class="step-tag">exploit.ts</div>
+    </div>
+    <div class="step">
+      <div class="step-num">05 ——</div>
+      <div class="step-content">
+        <h3>Emit a structured finding</h3>
+        <p>Only reports if the adversarial tx lands AND post-state shows funds moved. Includes on-chain evidence tx hash and a concrete fix recommendation.</p>
+      </div>
+      <div class="step-tag">report-*.md</div>
+    </div>
+  </div>
+</section>
+
+<!-- SAMPLE REPORT -->
+<section class="report-section" id="report">
+  <div class="section-label reveal">04 — Sample output</div>
+  <h2 class="reveal">A real finding, in ~5 seconds.</h2>
+  <p class="lead reveal">The agent autonomously rediscovered the planted bug. This is the actual report it emitted.</p>
+  <div class="terminal reveal">
+    <div class="terminal-bar">
+      <div class="dot dot-r"></div>
+      <div class="dot dot-y"></div>
+      <div class="dot dot-g"></div>
+      <span class="terminal-filename">reports/report-20260427-143201.md</span>
+    </div>
+    <div class="terminal-body">
+      <span class="t-line t-head"># Shadow Fuzzer report</span>
+      <span class="t-line"><span class="t-key">- target:   </span> <span class="t-string">CbdZT6zkBvgfaWCPUooeTkCZDuRz8Rfwmnhw2Nu6ZooC</span></span>
+      <span class="t-line"><span class="t-key">- sandbox:  </span> <span class="t-val">surfpool</span></span>
+      <span class="t-line"><span class="t-key">- findings: </span> <span class="t-green">1</span></span>
+      <span class="t-line"> </span>
+      <span class="t-line t-green">## MISSING_SIGNER-withdraw-01</span>
+      <span class="t-line t-comment">## withdraw: position drained without owner signature</span>
+      <span class="t-line"> </span>
+      <span class="t-line"><span class="t-key">- invariant: </span><span class="t-val">INV-3</span></span>
+      <span class="t-line"><span class="t-key">- severity:  </span><span class="t-red">critical</span></span>
+      <span class="t-line"><span class="t-key">- evidence:  </span><span class="t-string">2ycWV5ARip6ji…mf648a</span></span>
+      <span class="t-line"> </span>
+      <span class="t-line t-comment">Instruction `withdraw` reads `owner` as the privileged role but</span>
+      <span class="t-line t-comment">`owner` is neither marked as a signer nor verified through a</span>
+      <span class="t-line t-comment">`has_one` / `relations` constraint. Any caller can pass an</span>
+      <span class="t-line t-comment">arbitrary pubkey here.</span>
+      <span class="t-line"> </span>
+      <span class="t-line t-green">Confirmed exploit.</span> <span class="t-comment">Attacker drained 1,000,000 base units.</span>
+      <span class="t-line"> </span>
+      <span class="t-line t-comment">Fix: add `#[account(has_one = owner)]` on the `position` account,</span>
+      <span class="t-line t-comment">or change `owner: UncheckedAccount` → `owner: Signer&lt;'info&gt;`.</span>
+    </div>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section id="install" style="background: var(--bg2);">
+  <div class="section-label reveal">05 — Try it</div>
+  <h2 class="reveal">Running in 90 seconds.</h2>
+  <p class="lead reveal">Prerequisites: Node 20+, pnpm, Rust, Solana CLI, Anchor via avm.</p>
+  <div class="code-block reveal">
+    <button class="copy-btn" onclick="copyInstall(this)">Copy</button>
+    <div id="installCode">
+      <span class="t-line"><span class="comment"># clone & install</span></span>
+      <span class="t-line"><span class="prompt">$</span><span class="cmd"> git clone &lt;this-repo&gt; shadow-fuzzer</span></span>
+      <span class="t-line"><span class="prompt">$</span><span class="cmd"> cd shadow-fuzzer && pnpm install</span></span>
+      <span class="t-line"> </span>
+      <span class="t-line"><span class="comment"># build the on-chain program</span></span>
+      <span class="t-line"><span class="prompt">$</span><span class="cmd"> anchor build</span></span>
+      <span class="t-line"> </span>
+      <span class="t-line"><span class="comment"># run — agent finds the bug autonomously</span></span>
+      <span class="t-line"><span class="prompt">$</span><span class="cmd"> anchor test</span></span>
+      <span class="t-line"> </span>
+      <span class="t-line"><span class="comment"># read the report</span></span>
+      <span class="t-line"><span class="prompt">$</span><span class="cmd"> cat reports/report-*.md</span></span>
+    </div>
+  </div>
+  <div style="margin-top:24px; font-family: var(--mono); font-size:13px; color: var(--muted);">
+    Expected output: <span style="color:var(--green); font-weight:700">Tests 2 passed (2)</span> — the agent autonomously rediscovered the planted bug.
+  </div>
+</section>
+
+<!-- STACK -->
+<section id="stack">
+  <div class="section-label reveal">06 — Stack</div>
+  <h2 class="reveal">The full layer cake.</h2>
+  <div class="stack-grid reveal">
+    <div class="stack-card">
+      <div class="layer">On-chain framework</div>
+      <div class="pick"><span class="accent">Anchor</span> 0.31.1</div>
+      <div class="desc">Type-safe Solana program framework with IDL generation</div>
+    </div>
+    <div class="stack-card">
+      <div class="layer">Private execution</div>
+      <div class="pick"><span class="accent">MagicBlock</span> Ephemeral Rollups</div>
+      <div class="desc">ephemeral-rollups-sdk 0.11.x — private high-speed validator</div>
+    </div>
+    <div class="stack-card">
+      <div class="layer">State snapshot</div>
+      <div class="pick"><span class="accent">Helius</span></div>
+      <div class="desc">Mainnet account state forked into the sandbox RPC</div>
+    </div>
+    <div class="stack-card">
+      <div class="layer">Agent brain</div>
+      <div class="pick"><span class="accent">TypeScript</span> + SendAI</div>
+      <div class="desc">Solana Agent Kit — autonomous discovery loop</div>
+    </div>
+    <div class="stack-card">
+      <div class="layer">Identity (planned)</div>
+      <div class="pick"><span class="accent">Metaplex</span> + SNS</div>
+      <div class="desc">NFT badge per confirmed bug — agent reputation layer</div>
+    </div>
+    <div class="stack-card">
+      <div class="layer">Built at</div>
+      <div class="pick"><span class="accent">Solana Blitz</span> v4</div>
+      <div class="desc">Agentic + Ephemeral Rollups categories — solana.new</div>
+    </div>
+  </div>
+</section>
+
+<!-- STATUS -->
+<section id="status" style="background: var(--bg2);">
+  <div class="section-label reveal">07 — Roadmap</div>
+  <h2 class="reveal">What's done vs. what's next.</h2>
+  <table class="status-table reveal">
+    <thead>
+      <tr>
+        <th>Area</th>
+        <th>Today</th>
+        <th>Vision</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Targets</td>
+        <td class="done"><span class="pill pill-green">✓ done</span> Vault-shaped Anchor programs</td>
+        <td class="planned">Any Solana program</td>
+      </tr>
+      <tr>
+        <td>Bug classes</td>
+        <td class="done"><span class="pill pill-green">✓ done</span> Missing signer / has_one</td>
+        <td class="planned">Overflow, oracle manip, CPI abuse, account confusion…</td>
+      </tr>
+      <tr>
+        <td>Exploit synthesis</td>
+        <td class="done"><span class="pill pill-green">✓ done</span> Hardcoded for withdraw shape</td>
+        <td class="planned">LLM-driven, IDL-walking</td>
+      </tr>
+      <tr>
+        <td>Sandbox</td>
+        <td class="partial"><span class="pill pill-yellow">~ partial</span> Surfpool end-to-end ✓. MagicBlock provisions cleanly; router lifecycle has gaps</td>
+        <td class="planned">MagicBlock end-to-end</td>
+      </tr>
+      <tr>
+        <td>Narrative</td>
+        <td class="done"><span class="pill pill-green">✓ done</span> Templates with on-chain evidence</td>
+        <td class="planned">LLM-generated, business-impact-aware</td>
+      </tr>
+      <tr>
+        <td>Identity</td>
+        <td class="planned"><span class="pill pill-muted">planned</span> Not started</td>
+        <td class="planned">NFT badge per confirmed bug (Metaplex + SNS)</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <div class="section-label reveal" style="justify-content:center">Deploy on devnet</div>
+  <h2 class="reveal">Program live at CbdZT6…ZooC</h2>
+  <p class="lead reveal">Deployed at slot 458238441 on devnet. MagicBlock provisions cleanly, validator selected. Two ER lifecycle gaps remain — not fundamental, just iteration needed.</p>
+  <div class="hero-actions reveal" style="justify-content:center">
+    <a class="btn-primary" href="https://explorer.solana.com/address/CbdZT6zkBvgfaWCPUooeTkCZDuRz8Rfwmnhw2Nu6ZooC?cluster=devnet" target="_blank">→ Solana Explorer</a>
+    <a class="btn-secondary" href="https://luma.com/kfv9avi8" target="_blank">Solana Blitz v4 ↗</a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div style="font-family:var(--mono); font-size:13px; color: var(--green); font-weight:700;">shadow_fuzzer</div>
+  <div class="footer-built">
+    Built with
+    <a href="https://magicblock.gg" target="_blank">MagicBlock</a>
+    <a href="https://helius.dev" target="_blank">Helius</a>
+    <a href="https://www.anchor-lang.com" target="_blank">Anchor</a>
+    <a href="https://www.solana.new" target="_blank">solana.new</a>
+  </div>
+  <div>© 2026</div>
+</footer>
+
+<script>
+  // ─── LIVE TERMINAL ───
+  const TERMINAL_SCRIPT = [
+    // Step 1 — init
+    { delay: 300,  prompt: '$',     cls: '',       text: 'shadow-fuzz run CbdZT6zkBvgfaWCPUooeTkCZDuRz8Rfwmnhw2Nu6ZooC' },
+    { delay: 700,  prompt: 'sys',   cls: 'dim',    text: 'connecting to Helius RPC…' },
+    { delay: 1100, prompt: 'sys',   cls: 'green',  text: '✓ snapshot fetched  (slot 458238441)' },
+    { delay: 1500, prompt: 'sys',   cls: 'dim',    text: 'provisioning MagicBlock Ephemeral Rollup…' },
+    { delay: 2100, prompt: 'sys',   cls: 'green',  text: '✓ validator  MAS1Dt9q…k57  online' },
+    { delay: 2500, prompt: '',      cls: 'dim',    text: '─────────────────────────────────────────' },
+    // Step 2 — static analysis
+    { delay: 2800, prompt: 'agent', cls: 'purple', text: '[1/5]  reading IDL…' },
+    { delay: 3300, prompt: 'sys',   cls: 'dim',    text: 'instructions found:  initialize  deposit  withdraw' },
+    { delay: 3700, prompt: 'agent', cls: 'purple', text: '[2/5]  running static analyzer…' },
+    { delay: 4200, prompt: 'sys',   cls: 'dim',    text: 'scanning  withdraw  — accounts: position, vault, owner' },
+    { delay: 4800, prompt: 'sys',   cls: 'yellow', text: '⚠  owner: UncheckedAccount — not Signer, no has_one' },
+    { delay: 5200, prompt: 'sys',   cls: 'yellow', text: '⚠  owner referenced by vault PDA seed' },
+    { delay: 5600, prompt: 'sys',   cls: 'green',  text: '→  MISSING_SIGNER candidate queued' },
+    { delay: 5900, prompt: '',      cls: 'dim',    text: '─────────────────────────────────────────' },
+    // Step 3 — state setup
+    { delay: 6200, prompt: 'agent', cls: 'purple', text: '[3/5]  synthesizing legitimate scenario…' },
+    { delay: 6700, prompt: 'sys',   cls: 'dim',    text: 'mint created          4zMMC9…qd7' },
+    { delay: 7100, prompt: 'sys',   cls: 'dim',    text: 'vault initialized      8xRpL1…3kF' },
+    { delay: 7500, prompt: 'sys',   cls: 'dim',    text: 'victim deposited       1,000,000 units' },
+    { delay: 7800, prompt: '',      cls: 'dim',    text: '─────────────────────────────────────────' },
+    // Step 4 — exploit
+    { delay: 8100, prompt: 'agent', cls: 'purple', text: '[4/5]  constructing adversarial tx…' },
+    { delay: 8600, prompt: 'sys',   cls: 'dim',    text: 'attacker keypair       Hx7Kt2…9mZ' },
+    { delay: 9000, prompt: 'sys',   cls: 'dim',    text: 'passing victim as owner  →  signing with attacker' },
+    { delay: 9500, prompt: 'sys',   cls: 'dim',    text: 'submitting to private ER (invisible to mainnet)…' },
+    { delay: 10200,prompt: 'sys',   cls: 'green bold', text: '✓  tx landed   2ycWV5…648a' },
+    { delay: 10700,prompt: 'sys',   cls: 'red',    text: '!  vault balance:  0  (was 1,000,000)' },
+    { delay: 11000,prompt: '',      cls: 'dim',    text: '─────────────────────────────────────────' },
+    // Step 5 — report
+    { delay: 11300,prompt: 'agent', cls: 'purple', text: '[5/5]  emitting finding…' },
+    { delay: 11900,prompt: 'sys',   cls: 'green bold', text: '✓  CONFIRMED  MISSING_SIGNER-withdraw-01' },
+    { delay: 12300,prompt: 'sys',   cls: 'dim',    text: 'severity:   critical' },
+    { delay: 12600,prompt: 'sys',   cls: 'dim',    text: 'fix:        add  has_one = owner  constraint' },
+    { delay: 13000,prompt: 'sys',   cls: 'green',  text: 'report written →  reports/report-20260427.md' },
+    { delay: 13400,prompt: '',      cls: 'dim',    text: '─────────────────────────────────────────' },
+    { delay: 13700,prompt: '$',     cls: 'green',  text: 'Tests 2 passed (2)  [5.1s]' },
+  ];
+
+  const STEPS = [
+    { pct: 0,   label: 'step 0 / 5' },
+    { pct: 20,  label: 'step 1 / 5  init' },
+    { pct: 40,  label: 'step 2 / 5  analyze' },
+    { pct: 60,  label: 'step 3 / 5  scenario' },
+    { pct: 80,  label: 'step 4 / 5  exploit' },
+    { pct: 100, label: 'step 5 / 5  report ✓' },
+  ];
+
+  let termTimers = [];
+
+  function clearTermTimers() {
+    termTimers.forEach(clearTimeout);
+    termTimers = [];
+  }
+
+  function restartTerminal() {
+    clearTermTimers();
+    const body = document.getElementById('ltBody');
+    body.innerHTML = '';
+    document.getElementById('ltProgress').style.width = '0%';
+    document.getElementById('ltStepLabel').textContent = 'step 0 / 5';
+    document.getElementById('ltStatusText').textContent = 'RUNNING';
+    document.getElementById('ltStatusText').style.color = 'var(--green)';
+    document.getElementById('ltDot').classList.remove('idle');
+    runTerminal();
+  }
+
+  function runTerminal() {
+    const body = document.getElementById('ltBody');
+    const progress = document.getElementById('ltProgress');
+    const stepLabel = document.getElementById('ltStepLabel');
+
+    // Step progress triggers
+    const stepTriggers = { 2800: 1, 6200: 2, 8100: 3, 11300: 4, 13000: 5 };
+
+    TERMINAL_SCRIPT.forEach(({ delay, prompt, cls, text }) => {
+      const t = setTimeout(() => {
+        const line = document.createElement('div');
+        line.className = 'lt-line show fade-in';
+
+        const promptSpan = document.createElement('span');
+        promptSpan.className = prompt === '$' ? 'lt-prompt' : prompt === 'agent' ? 'lt-prompt agent' : 'lt-prompt sys';
+        promptSpan.textContent = prompt === '$' ? '❯' : prompt === 'agent' ? '⬡' : '·';
+
+        const textSpan = document.createElement('span');
+        textSpan.className = 'lt-text ' + cls;
+        textSpan.textContent = text;
+
+        line.appendChild(promptSpan);
+        line.appendChild(textSpan);
+        body.appendChild(line);
+
+        // auto-scroll
+        body.scrollTop = body.scrollHeight;
+      }, delay);
+      termTimers.push(t);
+    });
+
+    // Step updates
+    Object.entries(stepTriggers).forEach(([d, idx]) => {
+      const t = setTimeout(() => {
+        progress.style.width = STEPS[idx].pct + '%';
+        stepLabel.textContent = STEPS[idx].label;
+      }, parseInt(d));
+      termTimers.push(t);
+    });
+
+    // Done state
+    const done = setTimeout(() => {
+      document.getElementById('ltStatusText').textContent = 'DONE';
+      document.getElementById('ltStatusText').style.color = 'var(--green)';
+      document.getElementById('ltDot').classList.add('idle');
+      document.getElementById('ltDot').style.background = 'var(--green)';
+    }, 13800);
+    termTimers.push(done);
+
+    // Loop — restart after 6s pause
+    const loop = setTimeout(() => restartTerminal(), 13800 + 6000);
+    termTimers.push(loop);
+  }
+
+  // Start terminal on load
+  runTerminal();
+
+  // Nav scroll effect
+  const nav = document.getElementById('nav');
+  window.addEventListener('scroll', () => {
+    nav.classList.toggle('scrolled', window.scrollY > 40);
+  });
+
+  // Intersection Observer for reveals
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if (entry.isIntersecting) {
+        setTimeout(() => {
+          entry.target.classList.add('visible');
+          // Problem cards get border animation
+          if (entry.target.classList.contains('problem-card')) {
+            entry.target.classList.add('visible');
+          }
+        }, 80);
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // Problem cards staggered
+  const problemObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const cards = entry.target.querySelectorAll('.problem-card');
+        cards.forEach((card, i) => {
+          setTimeout(() => card.classList.add('visible'), i * 120);
+        });
+        problemObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+  const problemGrid = document.querySelector('.problem-grid');
+  if (problemGrid) problemObserver.observe(problemGrid);
+
+  // TX list animation
+  const txObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const items = entry.target.querySelectorAll('li');
+        items.forEach((item, i) => {
+          setTimeout(() => item.classList.add('tx-appear'), i * 600 + 400);
+        });
+        txObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.3 });
+  const txList = document.getElementById('txList');
+  if (txList) txObserver.observe(txList);
+
+  // Flow bar cycling highlight
+  const flowNodes = document.querySelectorAll('.flow-node');
+  let activeIdx = 2;
+  setInterval(() => {
+    flowNodes.forEach(n => n.classList.remove('active'));
+    activeIdx = (activeIdx + 1) % flowNodes.length;
+    flowNodes[activeIdx].classList.add('active');
+  }, 1600);
+
+  // Copy install button
+  function copyInstall(btn) {
+    const lines = [
+      'git clone <this-repo> shadow-fuzzer',
+      'cd shadow-fuzzer && pnpm install',
+      'anchor build',
+      'anchor test',
+      'cat reports/report-*.md'
+    ].join('\n');
+    navigator.clipboard.writeText(lines).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  }
+</script>
+</body>
+</html>

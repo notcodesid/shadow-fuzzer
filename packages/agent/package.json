@@ -1,8 +1,13 @@
 {
   "name": "@shadow-fuzzer/agent",
   "version": "0.1.0",
-  "private": true,
+  "description": "Internal agent runtime for the shadow-fuzzer CLI — IDL static analyzer, exploit runner, MagicBlock provisioning.",
+  "license": "MIT",
   "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts_comment": "private:false so the cli's published bundle can resolve it; agent is not intended for direct use yet (see shadow-fuzzer instead).",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

@@ -1,5 +1,5 @@
 {
-  "name": "shadow-fuzzer",
+  "name": "@shadow-fuzzer/root",
   "version": "0.1.0",
   "private": true,
   "description": "Private sandbox for AI security agents to fuzz Solana programs without leaking exploits to MEV bots.",
@@ -10,12 +10,13 @@
   "scripts": {
     "build:program": "anchor build",
     "build:agent": "pnpm --filter @shadow-fuzzer/agent build",
-    "build:cli": "pnpm --filter @shadow-fuzzer/cli build",
+    "build:cli": "pnpm --filter shadow-fuzzer build",
     "build": "pnpm build:program && pnpm -r --workspace-concurrency=1 build",
     "test:program": "anchor test --skip-deploy",
     "test:agent": "pnpm --filter @shadow-fuzzer/agent test",
-    "fuzz": "pnpm --filter @shadow-fuzzer/cli exec shadow-fuzz",
-    "demo": "bash scripts/run-demo.sh",
+    "shadow-fuzz": "node packages/cli/bin/shadow-fuzz.js",
+    "fuzz": "node packages/cli/bin/shadow-fuzz.js",
+    "demo": "node packages/cli/bin/shadow-fuzz.js demo",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"
   },

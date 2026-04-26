@@ -6,6 +6,7 @@ target/
 !target/deploy/*-keypair.json
 .anchor/
 test-ledger/
+ledger/
 .env
 .env.local
 *.log
@@ -13,7 +14,9 @@ test-ledger/
 .vscode/
 .idea/
 coverage/
-.shadow-fuzzer/cache/
+.shadow-fuzzer/
+reports/**/*.json
+reports/**/*.md
 reports/*.json
 reports/*.md
 !reports/.gitkeep
