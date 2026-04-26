@@ -14,8 +14,11 @@ import type { InvariantViolation } from "./types.js";
 // INV-3 is a transaction-shape invariant verified by replaying the tx
 // metadata and checking the signer set.
 
-const VAULT_DISCRIMINATOR_HEX = "1311ad60ee06b002"; // anchor "Vault"
-const POSITION_DISCRIMINATOR_HEX = "9c8b4a59f1a25c6b"; // anchor "UserPosition"
+// Pulled from target/idl/vulnerable_vault.json. If the program account
+// shape changes the IDL discriminators rotate too — re-read the IDL after
+// any state.rs edit.
+const VAULT_DISCRIMINATOR_HEX = "d308e82b02987577"; // [211,8,232,43,2,152,117,119]
+const POSITION_DISCRIMINATOR_HEX = "fbf8d1f553ea111b"; // [251,248,209,245,83,234,17,27]
 
 export interface VaultState {
   pubkey: PublicKey;

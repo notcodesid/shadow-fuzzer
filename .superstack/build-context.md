@@ -3,9 +3,9 @@
 Phase handoff for `/build-with-claude` and downstream skills.
 
 ## stack
-- **language:** Rust (Anchor 0.30.1 program) + TypeScript (agent + CLI)
+- **language:** Rust (Anchor 0.31.1 program) + TypeScript (agent + CLI)
 - **runtime:** Node 24, pnpm 9 workspace, Cargo workspace
-- **on-chain framework:** Anchor 0.30.1
+- **on-chain framework:** Anchor 0.31.1 (bumped from 0.30.1 — 0.30's IDL builder calls removed nightly `proc_macro::SourceFile` which doesn't exist in rustc 1.94)
 - **agent runtime:** SendAI / Solana Agent Kit (`solana-agent-kit` 1.4.x) — wired as a dependency, brain swap pending
 - **sandbox primary:** MagicBlock Private Ephemeral Rollups (`@magicblock-labs/ephemeral-rollups-sdk`)
 - **sandbox fallback:** Surfpool (auto-fallback in `provisionWithFallback`)
@@ -30,13 +30,17 @@ Phase handoff for `/build-with-claude` and downstream skills.
 - **declared in:** `programs/vulnerable-vault/src/lib.rs::declare_id!`
 - **anchor toml entries:** localnet + devnet both pinned to the same id
 
+## planted bugs (after build-with-claude phase 1)
+- **BUG #2 (runtime-exploitable):** missing signer / `has_one` check in `instructions/withdraw.rs`. Exploit verified end-to-end in `tests/vault.spec.ts` — attacker drains victim's position by passing victim's pubkey as `owner` and signing the tx with the attacker's keypair as fee payer.
+- **BUG #1 (static finding):** unchecked `+` in `instructions/deposit.rs::handler`. Bug shape preserved in source (see comment block); not runtime-exploitable through public ix surface because SPL token's own u64 supply invariants block the wrap. The agent's static pass should still flag this as a high-confidence smell — runtime-reachable the moment the program adds yield-accrual or a multi-mint variant.
+
 ## build_status
 ```json
 {
   "scaffold_complete": true,
-  "deps_installed": false,
-  "program_built": false,
-  "exploit_suite_passing": false,
+  "deps_installed": true,
+  "program_built": true,
+  "exploit_suite_passing": true,
   "agent_brain_wired": false,
   "magicblock_provisioning_wired": false,
   "demo_recorded": false,
@@ -45,14 +49,14 @@ Phase handoff for `/build-with-claude` and downstream skills.
 }
 ```
 
-## next-actions (ordered, for `/build-with-claude`)
-1. **Install deps** — `pnpm install` at repo root. Pulls in workspace + root devDeps for tests.
-2. **Build the program** — `anchor build`. Verifies the Cargo workspace and emits the IDL the test suite imports.
-3. **Run the local exploit suite** — `anchor test --skip-deploy`. Both `tests/vault.spec.ts` cases must pass, proving the planted bugs work end-to-end.
-4. **Wire MagicBlock provisioning** — replace the stub in `packages/agent/src/sandbox.ts::MagicBlockProvider.provision` with the real `@magicblock-labs/ephemeral-rollups-sdk` call. Acceptance: a fuzz run reports `sandbox: magicblock` in the report header without falling back.
-5. **Wire the SendAI brain** — replace `trySingleAttack` in `packages/agent/src/attacker.ts` with an Agent-Kit driver that picks instructions from the IDL and crafts adversarial argument values. Acceptance: a fresh fuzz run on the vault rediscovers at least BUG #2 without reading the test file.
+## next-actions (ordered, for the next session)
+1. ✅ ~~Install deps~~ — done (anchor + spl + magicblock + sendai resolved at root + workspace).
+2. ✅ ~~Build the program~~ — done on Anchor 0.31.1; IDL at `target/idl/vulnerable_vault.json`, .so at `target/deploy/vulnerable_vault.so`.
+3. ✅ ~~Run the local exploit suite~~ — `anchor test` passes; BUG #2 demonstrated end-to-end.
+4. **Wire MagicBlock provisioning** — replace the stub in `packages/agent/src/sandbox.ts::MagicBlockProvider.provision` with the real `@magicblock-labs/ephemeral-rollups-sdk@0.2.11` call. Acceptance: a fuzz run reports `sandbox: magicblock` in the report header without falling back.
+5. **Wire the SendAI brain** — replace `trySingleAttack` in `packages/agent/src/attacker.ts` with an Agent-Kit driver that picks instructions from the IDL and crafts adversarial argument values. Acceptance: a fresh fuzz run on the vault rediscovers BUG #2 without reading the test file.
 6. **Record the demo** — `bash scripts/run-demo.sh`, capture terminal + the generated `reports/report-*.md`.
-7. **Stretch:** flesh out `app/` (Next.js dashboard surfacing the latest report) AND `Metaplex + SNS` "Bugs Squashed" reputation NFT. Both gated behind a green run of step 6.
+7. **Stretch:** flesh out `app/` (Next.js dashboard surfacing the latest report) AND Metaplex + SNS "Bugs Squashed" reputation NFT. Both gated behind a green run of step 6.
 
 ## guardrails
 - **Don't soften the planted bugs** — their shape is the demo's narrative.

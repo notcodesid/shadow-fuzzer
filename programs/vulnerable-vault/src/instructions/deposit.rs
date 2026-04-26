@@ -41,12 +41,18 @@ pub fn handler(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         amount,
     )?;
 
-    // ─── BUG #1: unchecked accounting ─────────────────────────────────────
+    // ─── BUG #1: unchecked accounting (static finding) ────────────────────
     // A correct implementation would use `checked_add(amount).ok_or(...)`.
-    // With raw `+`, a large deposit (or several smaller ones) overflows u64
-    // and the running totals silently wrap. Subsequent withdraws then drain
-    // the vault while INV-1 (Σ balances == total_deposits) still holds on
-    // the wrapped values.
+    // SPL token's own u64 supply invariants make this *practically*
+    // unreachable from a single mint (you can't legitimately accumulate
+    // more than u64::MAX of a single mint in one account), but the bug
+    // shape is still real and gets flagged by Shadow Fuzzer's static
+    // pass — for example, the moment the program adds yield-accrual or
+    // a multi-mint variant, this overflow becomes exploitable. We keep
+    // it planted because the agent's narrative output should report
+    // both runtime exploits AND high-confidence code smells. The local
+    // exploit suite only verifies the runtime-reachable bug (BUG #2);
+    // BUG #1 is asserted by the agent's static analysis.
     let position = &mut ctx.accounts.position;
     position.balance = position.balance + amount;
 
