@@ -22,4 +22,4 @@ anchor-spl = "0.31.1"
 # Public-ER delegation only at this step. Access-control/private features
 # come in a follow-up sub-step (would add `access-control` to features and
 # pull in PermissionProgram CPIs).
-ephemeral-rollups-sdk = { version = "0.11.1", features = ["anchor"] }
+ephemeral-rollups-sdk = { version = "0.11.1", features = ["anchor", "access-control"] }

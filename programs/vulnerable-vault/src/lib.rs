@@ -20,6 +20,7 @@
 #![allow(clippy::result_large_err)]
 
 use anchor_lang::prelude::*;
+use ephemeral_rollups_sdk::access_control::structs::Member;
 use ephemeral_rollups_sdk::anchor::ephemeral;
 
 declare_id!("CbdZT6zkBvgfaWCPUooeTkCZDuRz8Rfwmnhw2Nu6ZooC");
@@ -56,10 +57,16 @@ pub mod vulnerable_vault {
         instructions::withdraw::handler(ctx, amount)
     }
 
-    /// Delegate the vault PDA into a MagicBlock ER. The agent calls this
-    /// before the fuzz loop starts.
-    pub fn delegate_vault(ctx: Context<DelegateVault>) -> Result<()> {
-        instructions::delegate_vault::handler(ctx)
+    /// Delegate the vault PDA into a Private MagicBlock ER. The agent
+    /// calls this before the fuzz loop starts. `members` controls which
+    /// pubkeys are allowed to act on the delegated state — pass the
+    /// agent's payer (with `AUTHORITY_FLAG`) so only the fuzz session
+    /// can mutate the vault inside the rollup.
+    pub fn delegate_vault(
+        ctx: Context<DelegateVault>,
+        members: Option<Vec<Member>>,
+    ) -> Result<()> {
+        instructions::delegate_vault::handler(ctx, members)
     }
 
     /// Commit ER-side state back to the base layer and release the

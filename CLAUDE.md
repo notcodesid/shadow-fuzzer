@@ -10,13 +10,16 @@ Nothing the agent does ever touches the public mempool.
 
 ## Repo layout
 - `programs/vulnerable-vault/` — Anchor program. **Deliberately broken.** Two planted bugs the agent must rediscover:
-  - **BUG #2 (runtime-exploitable, headline):** `instructions/withdraw.rs` has no `has_one = owner` and no manual signer check. Anyone can drain any position. Proven end-to-end in `tests/vault.spec.ts`.
+  - **BUG #2 (runtime-exploitable, headline):** `instructions/withdraw.rs` has no `has_one = owner` and no manual signer check. Anyone can drain any position. Proven end-to-end in `tests/vault.spec.ts` (manual ground truth) AND `tests/brain.spec.ts` (autonomous rediscovery from the IDL alone).
   - **BUG #1 (static finding):** `instructions/deposit.rs` uses raw `+` instead of `checked_add`. SPL token's own u64 supply invariants block this from wrapping through the public ix surface, so we don't have a runtime test for it — the agent's static pass should still flag it as a high-confidence smell. Bug shape preserved in source.
   - DO NOT FIX EITHER BUG. They are the demo target.
 - `packages/agent/` — the fuzz brain (TS):
   - `snapshot.ts` Helius-based state capture
   - `sandbox.ts` MagicBlock primary, Surfpool fallback (`provisionWithFallback`)
-  - `attacker.ts` fuzz loop — currently rule-based, swaps to SendAI / Solana Agent Kit driver in the next phase
+  - `brain/static_analyzer.ts` IDL walker that flags missing-signer / has_one shapes (high-precision: requires the suspicious account to be referenced by at least one sibling PDA's seeds, so global-config-admin pubkeys don't over-fire)
+  - `brain/state.ts` synthesizes a legitimate vault scenario (mint, vault, victim, deposit) inside the sandbox
+  - `brain/exploit.ts` concrete missing-signer attacker — hardcoded for the withdraw shape today; generalize via IDL account-walking when the second program target lands
+  - `attacker.ts::runFuzzLoop` orchestrator: load IDL → analyzeIdl → seedVaultState → runExploit per candidate → emit Findings
   - `invariants.ts` INV-1 / INV-2 / INV-3 (see comment block in file)
   - `report.ts` markdown + JSON output
 - `packages/cli/` — the `shadow-fuzz` binary
