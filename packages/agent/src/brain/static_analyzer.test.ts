@@ -5,7 +5,11 @@ import { describe, it, expect } from "vitest";
 
 import { analyzeIdl, type Candidate } from "./static_analyzer.js";
 
-const VAULT_IDL_PATH = resolve(__dirname, "../../../../target/idl/vulnerable_vault.json");
+// Read the bundled IDL from the CLI's assets directory rather than
+// `target/idl/` so the test doesn't depend on a fresh `anchor build`
+// having run in the working tree. The bundled copy is the canonical
+// artifact the published CLI ships.
+const VAULT_IDL_PATH = resolve(__dirname, "../../../cli/assets/vulnerable_vault.json");
 
 describe("analyzeIdl", () => {
   it("flags the missing-signer pattern on `withdraw` from the real IDL", async () => {

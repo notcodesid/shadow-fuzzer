@@ -23,7 +23,6 @@ import {
 
 const VALIDATOR_RPC = "http://127.0.0.1:8899";
 const READY_TIMEOUT_MS = 30_000;
-const PROGRAM_ID = "CbdZT6zkBvgfaWCPUooeTkCZDuRz8Rfwmnhw2Nu6ZooC";
 
 export interface SpawnedValidator {
   rpcUrl: string;
@@ -34,6 +33,7 @@ export interface SpawnedValidator {
 
 export interface SpawnArgs {
   programSoPath: string;
+  programId: string;
   airdropSol?: number;
 }
 
@@ -43,7 +43,7 @@ export async function spawnLocalValidator(args: SpawnArgs): Promise<SpawnedValid
     "solana-test-validator",
     [
       "--bpf-program",
-      PROGRAM_ID,
+      args.programId,
       args.programSoPath,
       "--ledger",
       ledgerDir,
@@ -66,7 +66,7 @@ export async function spawnLocalValidator(args: SpawnArgs): Promise<SpawnedValid
     }
   });
 
-  await waitForReady(VALIDATOR_RPC, READY_TIMEOUT_MS, child);
+  await waitForReady(VALIDATOR_RPC, READY_TIMEOUT_MS, child, args.programId);
 
   // Mint a fresh demo keypair and airdrop from the validator's faucet.
   const payer = Keypair.generate();
@@ -106,6 +106,7 @@ async function waitForReady(
   rpcUrl: string,
   timeoutMs: number,
   child: ChildProcess,
+  programId: string,
 ): Promise<void> {
   const start = Date.now();
   const conn = new Connection(rpcUrl, "confirmed");
@@ -135,14 +136,14 @@ async function waitForReady(
   // Phase 2: wait for the BPF program to be visible. The validator loads
   // programs from --bpf-program asynchronously; getSlot() succeeds before
   // the program account is queryable.
-  const programPk = new PublicKey(PROGRAM_ID);
+  const programPk = new PublicKey(programId);
   while (Date.now() - start < timeoutMs) {
     const info = await conn.getAccountInfo(programPk, "confirmed");
     if (info) return;
     await new Promise((r) => setTimeout(r, 300));
   }
   throw new Error(
-    `solana-test-validator started but program ${PROGRAM_ID} not visible after ${timeoutMs}ms`,
+    `solana-test-validator started but program ${programId} not visible after ${timeoutMs}ms`,
   );
 }
 

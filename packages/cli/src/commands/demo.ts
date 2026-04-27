@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,8 +12,6 @@ interface DemoOptions {
   reportDir: string;
   budget: number;
 }
-
-const PROGRAM_ID = "CbdZT6zkBvgfaWCPUooeTkCZDuRz8Rfwmnhw2Nu6ZooC";
 
 // The `demo` subcommand is the zero-friction onboarding path: it spawns
 // a local solana-test-validator with the bundled vulnerable_vault binary
@@ -38,6 +36,12 @@ export async function demoCommand(opts: DemoOptions): Promise<void> {
   const programSoPath = resolve(here, "..", "..", "assets", "vulnerable_vault.so");
   const idlPath = resolve(here, "..", "..", "assets", "vulnerable_vault.json");
 
+  // Pull the program ID out of the bundled IDL rather than hardcoding a
+  // string constant. If a future build reuses this CLI scaffold against
+  // a different program, this code path doesn't need to change.
+  const idl = JSON.parse(readFileSync(idlPath, "utf8")) as { address: string };
+  const programId = idl.address;
+
   console.log(
     kleur.dim(
       "shadow-fuzz demo — boots a local validator with a vulnerable vault\n" +
@@ -48,7 +52,7 @@ export async function demoCommand(opts: DemoOptions): Promise<void> {
   const spinner = ora({ text: "spawning local validator…", color: "cyan" }).start();
   let validator;
   try {
-    validator = await spawnLocalValidator({ programSoPath });
+    validator = await spawnLocalValidator({ programSoPath, programId });
     spinner.succeed(`local validator ready (rpc ${validator.rpcUrl})`);
   } catch (err) {
     spinner.fail((err as Error).message);
@@ -66,7 +70,7 @@ export async function demoCommand(opts: DemoOptions): Promise<void> {
   const fuzzSpinner = ora({ text: "agent: snapshot → analyze → exploit", color: "cyan" }).start();
   try {
     const report = await runFuzz({
-      programId: PROGRAM_ID,
+      programId,
       rpcUrl: validator.rpcUrl,
       sandbox: "surfpool",
       budgetTx: opts.budget,
